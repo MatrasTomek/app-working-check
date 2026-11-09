@@ -2,6 +2,7 @@ import socket
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 import time
 
 import pytest
@@ -42,8 +43,27 @@ class _Handler(SimpleHTTPRequestHandler):
             elif path == "/poll":
                 time.sleep(1)
                 self._send(200, b"ok")
+            elif path == "/hang":
+                time.sleep(4)
+                self._send(200, b"late")
             else:
                 super().do_GET()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_POST(self):
+        path = self.path.split("?", 1)[0]
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            form = parse_qs(self.rfile.read(length).decode("utf-8"))
+            if path != "/login":
+                self._send(404, b"not found")
+            elif form.get("user") == ["jan"] and form.get("pass") == ["sekret"]:
+                self._send(302, headers={"Location": "/dashboard.html"})
+            else:
+                body = (SITE_DIR / "login.html").read_text(encoding="utf-8").replace(
+                    "</body>", '<div role="alert">Nieprawidłowy login lub hasło</div></body>')
+                self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
         except (BrokenPipeError, ConnectionResetError):
             pass
 

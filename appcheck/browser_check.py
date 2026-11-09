@@ -6,8 +6,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from playwright.sync_api import Browser, Page, Request, Response
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from appcheck.config import AppConfig
+from appcheck.login import perform_login
 from appcheck.result import AppResult, Issue, RequestRecord, Severity, mask_secrets, slugify
 from appcheck.rules import classify_console, classify_page_error, classify_request
 
@@ -24,12 +26,28 @@ def _is_main_document(request: Request, page: Page) -> bool:
     return request.resource_type == "document" and request.frame == page.main_frame
 
 
+def _has_content(page: Page) -> bool:
+    """Test renderowania; po nawigacji po stronie klienta (zniszczony kontekst) czeka na load i ponawia raz."""
+    try:
+        return page.evaluate(_HAS_CONTENT_JS)
+    except Exception:
+        page.wait_for_load_state("load")
+        return page.evaluate(_HAS_CONTENT_JS)
+
+
+def _take_screenshot(page: Page, app: AppConfig, screenshot_dir: Path, result: AppResult) -> None:
+    screenshot_dir.mkdir(parents=True, exist_ok=True)
+    path = screenshot_dir / f"{slugify(app.name)}.png"
+    page.screenshot(full_page=True, path=path)
+    result.screenshot = path
+
+
 def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResult:
     """Sprawdza aplikację; nigdy nie rzuca wyjątku."""
     result = AppResult(name=app.name, url=app.url)
     secrets = [app.password]
     app_host = urlsplit(app.url).hostname or ""
-    state = {"logged_in": False}
+    state = {"logged_in": False, "done": False}
 
     def add_issue(issue: Issue | None) -> None:
         if issue is not None:
@@ -37,6 +55,8 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
             result.issues.append(issue)
 
     def record(rec: RequestRecord) -> None:
+        if state["done"]:
+            return
         masked = RequestRecord(
             rec.method, mask_secrets(rec.url, secrets), rec.resource_type, rec.status,
             mask_secrets(rec.error, secrets) if rec.error else None,
@@ -51,22 +71,26 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
         page = context.new_page()
 
         def on_console(msg) -> None:
+            if state["done"]:
+                return
             if msg.type in ("error", "warning"):
                 text = mask_secrets(msg.text, secrets)
                 result.console_messages.append(f"{msg.type}: {text}")
                 add_issue(classify_console(msg.type, text))
 
         def on_pageerror(err) -> None:
-            add_issue(classify_page_error(mask_secrets(str(err), secrets)))
+            if state["done"]:
+                return
+            add_issue(classify_page_error(mask_secrets(err.stack or str(err), secrets)))
 
         def on_requestfailed(request: Request) -> None:
-            if _is_main_document(request, page):
+            if state["done"] or _is_main_document(request, page):
                 return  # dostępność oceniana osobno
             record(RequestRecord(request.method, request.url, request.resource_type,
                                  None, request.failure or "nieznany błąd"))
 
         def on_response(response: Response) -> None:
-            if response.status < 400 or _is_main_document(response.request, page):
+            if state["done"] or response.status < 400 or _is_main_document(response.request, page):
                 return
             req = response.request
             record(RequestRecord(req.method, req.url, req.resource_type, response.status, None))
@@ -84,6 +108,9 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
             result.load_time_ms = round((time.monotonic() - start) * 1000)
             first_line = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
             add_issue(Issue(Severity.ERROR, "dostępność", f"Serwer nie odpowiada: {first_line}"))
+            if isinstance(e, PlaywrightTimeout) and page.url != "about:blank":
+                state["done"] = True  # strona częściowo się otworzyła — warto zobaczyć, jak wygląda
+                _take_screenshot(page, app, screenshot_dir, result)
             return result
         result.load_time_ms = round((time.monotonic() - start) * 1000)
 
@@ -95,18 +122,26 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
         except Exception:
             pass  # brak networkidle nie jest błędem
 
-        if not page.evaluate(_HAS_CONTENT_JS):
-            add_issue(Issue(Severity.ERROR, "wyświetlanie", "Pusta strona — nic się nie wyrenderowało"))
+        empty_page = Issue(Severity.ERROR, "wyświetlanie", "Pusta strona — nic się nie wyrenderowało")
+        if not _has_content(page):
+            add_issue(empty_page)
 
-        # --- Task 5: logowanie ---
-        # if app.needs_login:
-        #     perform_login(page, app)   # po sukcesie: state["logged_in"] = True, ponowne sprawdzenie wyświetlania
+        if app.needs_login:
+            login_issue = perform_login(page, app)
+            if login_issue is None:
+                state["logged_in"] = True
+                try:
+                    page.wait_for_load_state("networkidle", timeout=timeout_ms)
+                except Exception:
+                    pass
+                if not _has_content(page):
+                    add_issue(empty_page)
+            else:
+                add_issue(login_issue)
 
+        state["done"] = True
         if result.status is Severity.ERROR:
-            screenshot_dir.mkdir(parents=True, exist_ok=True)
-            path = screenshot_dir / f"{slugify(app.name)}.png"
-            page.screenshot(full_page=True, path=path)
-            result.screenshot = path
+            _take_screenshot(page, app, screenshot_dir, result)
     except Exception as e:
         add_issue(Issue(Severity.ERROR, "skrypt", f"Błąd skryptu: {e}"))
     finally:
