@@ -15,6 +15,16 @@ pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
+Jeśli PowerShell odmawia uruchomienia `activate` („running scripts is disabled on this system”),
+zezwól na lokalne skrypty dla swojego konta:
+
+```
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+albo pomiń aktywację i wywołuj Pythona ze środowiska bezpośrednio, np.
+`.venv\Scripts\python check.py` (i `.venv\Scripts\python -m pip install -r requirements.txt`).
+
 Linux / macOS:
 
 ```
@@ -25,6 +35,10 @@ python -m playwright install chromium
 ```
 
 ## Konfiguracja
+
+Pliki `apps.yaml` i `.env` muszą być zapisane w kodowaniu **UTF-8** (w Notatniku: „Zapisz jako”
+→ Kodowanie: UTF-8). Uwaga: w Windows PowerShell 5.1 przekierowanie `>` (np.
+`echo PANEL_USER=jan > .env`) tworzy plik UTF-16 — skrypt zgłosi wtedy błąd konfiguracji.
 
 ### `apps.yaml`
 
@@ -78,8 +92,14 @@ Opcje:
 - `--env-file PLIK` — plik z danymi logowania (domyślnie `.env`; brak pliku nie jest błędem).
 
 Raporty trafiają do `reports/`: `reports/raport-RRRR-MM-DD_GG-MM-SS.html`, a zrzuty ekranu
-aplikacji ze statusem BŁĄD do `reports/RRRR-MM-DD_GG-MM-SS/<nazwa>.png`. Ścieżka raportu jest
-wypisywana na końcu (`Raport: ...`).
+aplikacji ze statusem BŁĄD do `reports/RRRR-MM-DD_GG-MM-SS/<nazwa>.png`, gdzie `<nazwa>` to
+znormalizowana nazwa aplikacji („slug”: małe litery bez polskich znaków, inne znaki zamienione na
+`-`, np. „Panel księgowości” → `panel-ksiegowosci.png`). Pełna ścieżka raportu jest wypisywana
+na końcu (`Raport: ...`).
+
+Domyślne `apps.yaml`, `.env` i `reports/` są szukane w katalogu skryptu (obok `check.py`),
+niezależnie od katalogu, z którego go uruchomisz. Ścieżki podane jawnie w opcjach są liczone
+względem bieżącego katalogu.
 
 ## Statusy
 
@@ -87,17 +107,26 @@ Status aplikacji to najgorszy ze statusów jej problemów.
 
 - **OK** — brak problemów.
 - **OSTRZEŻENIE** — `console.error` lub nieobsłużony wyjątek JS, odpowiedź 4xx z API,
-  nieudany zasób inny niż skrypt z tej samej domeny (obrazy, CSS, fonty, skrypty zewnętrzne).
-- **BŁĄD** — strona niedostępna (DNS, połączenie, SSL, timeout), HTTP ≥ 400 dokumentu głównego,
-  pusta strona, nieudane logowanie lub brak formularza, odpowiedź 5xx / zerwane żądanie API,
-  nieudany skrypt z tej samej domeny, błąd skryptu.
+  odpowiedź 5xx / zerwane żądanie do API **innej domeny** (np. analityka, widżety zewnętrzne),
+  nieudany zasób inny niż skrypt z tej samej domeny (obrazy, CSS, fonty, skrypty zewnętrzne),
+  strona nie zakończyła ładowania w limicie `timeout` (dokument się wczytał, ale wisi jakiś
+  zasób — np. obraz lub skrypt zewnętrzny; pozostałe sprawdzenia są wykonywane dalej).
+- **BŁĄD** — strona niedostępna (DNS, połączenie, SSL, timeout dokumentu), HTTP ≥ 400 dokumentu
+  głównego — także po przekierowaniu przez JavaScript lub po zalogowaniu, pusta strona, nieudane
+  logowanie lub brak formularza, odpowiedź 5xx / zerwane żądanie do API aplikacji, nieudany skrypt
+  z tej samej domeny, błąd skryptu.
+
+API „aplikacji” to żądania do hosta z `url` (lub hosta, na który przekierował adres startowy)
+albo do jego domeny nadrzędnej, o ile ma ona co najmniej dwa człony — np. dla
+`panel.firma.com.pl` także `api.firma.com.pl`, ale dla `example.com` tylko sam `example.com`.
 
 ## Kody wyjścia
 
 - `0` — brak BŁĘDÓW,
 - `1` — co najmniej jeden BŁĄD,
-- `2` — błąd konfiguracji lub środowiska (np. zły `apps.yaml`, brak zmiennych w `.env`,
-  nieznana nazwa w `--only`, brak Chromium).
+- `2` — błąd konfiguracji lub środowiska (np. zły `apps.yaml`, plik nie w UTF-8, brak zmiennych
+  w `.env`, nieznana nazwa w `--only`, brak Chromium lub błąd jej uruchomienia, nie można zapisać
+  raportu).
 
 ## Testy
 
