@@ -65,7 +65,7 @@ def _parse_app(pos: int, entry: object, env: Mapping[str, str]) -> AppConfig:
         raise ConfigError(f"{label}: brak pola 'name'")
     url = entry.get("url")
     if not url:
-        raise ConfigError(f"{label}: brak pola 'url'")
+        raise ConfigError(f"{label} (pozycja {pos}): brak pola 'url'")
     url = str(url)
     if not url.startswith(("http://", "https://")):
         raise ConfigError(f"{label}: url musi zaczynać się od http:// lub https://")
