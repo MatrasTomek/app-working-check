@@ -1,6 +1,6 @@
 from appcheck.browser_check import check_app
 from appcheck.config import AppConfig
-from appcheck.result import Severity
+from appcheck.result import Severity, screenshot_filename
 
 
 def run(browser, url, tmp_path, **kw):
@@ -27,7 +27,7 @@ def test_api_500_is_error_with_screenshot(browser, site, tmp_path):
     r = run(browser, f"{site}/api500.html", tmp_path)
     assert r.status is Severity.ERROR
     assert any(i.message == "Backend: GET /api/500 → 500" for i in r.issues)
-    assert r.screenshot == tmp_path / "test.png" and r.screenshot.exists()
+    assert r.screenshot == tmp_path / screenshot_filename("Test") and r.screenshot.exists()
 
 
 def test_api_404_is_warning(browser, site, tmp_path):

@@ -59,19 +59,37 @@ def test_third_party_api_failure_is_warning_with_host():
     assert classify_request(rec("xhr", 503, url="https://api.other.com/x"), APP, True).severity is Severity.WARNING
 
 
-def test_sibling_subdomain_api_is_own():
+def test_same_registrable_domain_is_own():
     hosts = {"panel.firma.com.pl"}
     i = classify_request(rec("fetch", 500, url="https://api.firma.com.pl/x"), hosts, True)
     assert i.severity is Severity.ERROR and i.message == "Backend: GET api.firma.com.pl/x → 500"
-    assert classify_request(rec("fetch", 500, url="https://firma.com.pl/x"), hosts, True).severity is Severity.WARNING
+    assert classify_request(rec("fetch", 500, url="https://firma.com.pl/x"), hosts, True).severity is Severity.ERROR
     assert classify_request(rec("fetch", 500, url="https://evilfirma.com.pl/x"), hosts, True).severity is Severity.WARNING
 
 
-def test_two_label_app_host_has_no_parent():
+def test_public_suffix_is_not_a_shared_parent():
+    # co.uk / com.pl to sufiksy publiczne — inne domeny pod nimi należą do kogoś innego
+    assert classify_request(rec("fetch", 500, url="https://api.other.co.uk/x"), {"panel.co.uk"}, True).severity is Severity.WARNING
+    assert classify_request(rec("fetch", 500, url="https://api.panel.co.uk/x"), {"panel.co.uk"}, True).severity is Severity.ERROR
+    assert classify_request(rec("fetch", 500, url="https://sklep.com.pl/x"), {"firma.com.pl"}, True).severity is Severity.WARNING
+
+
+def test_private_suffix_hosting_is_not_shared():
+    # app1.herokuapp.com i app2.herokuapp.com to różni właściciele
+    hosts = {"app1.herokuapp.com"}
+    assert classify_request(rec("fetch", 500, url="https://app2.herokuapp.com/x"), hosts, True).severity is Severity.WARNING
+
+
+def test_subdomain_of_two_label_app_host_is_own():
     hosts = {"example.com"}
     assert classify_request(rec("fetch", 500, url="https://example.com/x"), hosts, True).severity is Severity.ERROR
-    assert classify_request(rec("fetch", 500, url="https://api.example.com/x"), hosts, True).severity is Severity.WARNING
+    assert classify_request(rec("fetch", 500, url="https://api.example.com/x"), hosts, True).severity is Severity.ERROR
     assert classify_request(rec("fetch", 500, url="https://www.com/x"), hosts, True).severity is Severity.WARNING
+
+
+def test_localhost_and_empty_host_match_exactly_only():
+    assert classify_request(rec("fetch", 500, url="http://localhost:8000/x"), {"localhost"}, True).severity is Severity.ERROR
+    assert classify_request(rec("fetch", 500, url="http://other/x"), {"localhost", ""}, True).severity is Severity.WARNING
 
 
 def test_any_app_host_counts_including_final_host():

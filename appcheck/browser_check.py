@@ -10,7 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from appcheck.config import AppConfig
 from appcheck.login import perform_login
-from appcheck.result import AppResult, Issue, RequestRecord, Severity, mask_secrets, slugify
+from appcheck.result import AppResult, Issue, RequestRecord, Severity, mask_secrets, screenshot_filename
 from appcheck.rules import classify_console, classify_page_error, classify_request
 
 _HAS_CONTENT_JS = """() => {
@@ -37,7 +37,7 @@ def _has_content(page: Page) -> bool:
 
 def _take_screenshot(page: Page, app: AppConfig, screenshot_dir: Path, result: AppResult) -> None:
     screenshot_dir.mkdir(parents=True, exist_ok=True)
-    path = screenshot_dir / f"{slugify(app.name)}.png"
+    path = screenshot_dir / screenshot_filename(app.name)
     page.screenshot(full_page=True, path=path)
     result.screenshot = path
 

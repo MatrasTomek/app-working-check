@@ -1,6 +1,7 @@
 """Model wyniku sprawdzenia aplikacji oraz pomocnicze funkcje."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
@@ -91,3 +92,9 @@ def slugify(name: str) -> str:
     text = name.replace("ł", "l").replace("Ł", "L")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
+def screenshot_filename(name: str) -> str:
+    """Nazwa pliku zrzutu: slug + krótki skrót nazwy, więc „A/B” i „A-B” nie nadpiszą się nawzajem."""
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:6]
+    return f"{slugify(name) or 'aplikacja'}-{digest}.png"

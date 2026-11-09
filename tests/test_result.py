@@ -1,4 +1,4 @@
-from appcheck.result import AppResult, Issue, Severity, mask_secrets, slugify
+from appcheck.result import AppResult, Issue, Severity, mask_secrets, screenshot_filename, slugify
 
 
 def test_status_is_worst_issue():
@@ -52,3 +52,15 @@ def test_mask_secrets_lowercase_hex_and_json():
     assert mask_secrets("p=p%40%22%c5%82", [s]) == "p=***"
     assert mask_secrets('{"pass":"p@\\"ł"}', [s]) == '{"pass":"***"}'
     assert mask_secrets('{"pass":"p@\\"\\u0142"}', [s]) == '{"pass":"***"}'
+
+
+def test_screenshot_filename_unique_for_colliding_slugs():
+    a, b = screenshot_filename("A/B"), screenshot_filename("A-B")
+    assert a != b
+    assert a.startswith("a-b-") and a.endswith(".png")
+    assert screenshot_filename("A/B") == a  # deterministyczna
+
+
+def test_screenshot_filename_for_name_without_ascii():
+    name = screenshot_filename("日本")
+    assert name.startswith("aplikacja-") and name.endswith(".png")
