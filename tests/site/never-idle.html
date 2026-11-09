@@ -1,0 +1,5 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Never idle</title></head>
+<body><h1>Ciągłe odpytywanie</h1>
+<script>
+(async function loop() { for (;;) { try { await fetch('/poll'); } catch (e) { return; } } })();
+</script></body></html>
