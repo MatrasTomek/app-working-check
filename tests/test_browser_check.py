@@ -87,10 +87,37 @@ def test_page_error_uses_stack(browser, site, tmp_path):
     assert "bum" in msg and "explodeHere" in msg
 
 
-def test_goto_timeout_with_partial_page_takes_screenshot(browser, site, tmp_path):
+def test_slow_subresource_is_warning_without_screenshot(browser, site, tmp_path):
     r = run(browser, f"{site}/hanging-img.html", tmp_path, timeout=1)
+    assert r.status is Severity.WARNING
+    assert any(i.category == "dostępność" and i.message == "Strona nie zakończyła ładowania w 1 s"
+               for i in r.issues)
+    assert r.screenshot is None and r.load_time_ms is None
+
+
+def test_document_timeout_with_partial_page_takes_screenshot(browser, site, tmp_path):
+    r = run(browser, f"{site}/slow-doc", tmp_path, timeout=1)
+    assert r.status is Severity.ERROR
     assert any("Serwer nie odpowiada" in i.message for i in r.issues)
     assert r.screenshot is not None and r.screenshot.exists()
+
+
+def test_js_redirect_to_error_page_is_error(browser, site, tmp_path):
+    r = run(browser, f"{site}/js-redirect-502.html", tmp_path)
+    assert r.status is Severity.ERROR
+    assert any(i.category == "dostępność" and i.message == "HTTP 502 Bad Gateway (/status/502)"
+               for i in r.issues)
+
+
+def test_first_document_error_reported_once(browser, site, tmp_path):
+    r = run(browser, f"{site}/status/502", tmp_path)
+    assert [i.message for i in r.issues if i.category == "dostępność"] == ["HTTP 502 Bad Gateway"]
+
+
+def test_third_party_api_failure_is_warning(browser, site, tmp_path):
+    r = run(browser, f"{site}/third-party.html", tmp_path)
+    assert r.status is Severity.WARNING
+    assert any(i.category == "backend" and "nonexistent.invalid/x" in i.message for i in r.issues)
 
 
 def test_rendering_check_retries_after_destroyed_context(browser, site, tmp_path, monkeypatch):
@@ -109,3 +136,10 @@ def test_rendering_check_retries_after_destroyed_context(browser, site, tmp_path
     monkeypatch.setattr(Page, "evaluate", evaluate)
     assert run(browser, f"{site}/ok.html", tmp_path).status is Severity.OK
     assert len(calls) == 2
+
+
+def test_js_redirect_to_dead_server_is_error(browser, site, tmp_path):
+    r = run(browser, f"{site}/js-redirect-dead.html", tmp_path)
+    assert r.status is Severity.ERROR
+    assert any(i.category == "dostępność" and i.message.startswith("Serwer nie odpowiada: net::ERR_")
+               and i.message.endswith("(/)") for i in r.issues)

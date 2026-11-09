@@ -45,3 +45,10 @@ def test_password_only_form_is_not_submitted(browser, site, tmp_path):
 def test_untyped_show_password_button_not_clicked(browser, site, tmp_path):
     r = check_app(browser, app(f"{site}/login-showpw.html"), tmp_path)
     assert r.status is Severity.OK and not r.failed_requests
+
+
+def test_login_redirecting_to_error_page_is_error(browser, site, tmp_path):
+    r = check_app(browser, app(f"{site}/login.html", pw="to502"), tmp_path)
+    assert r.status is Severity.ERROR
+    assert any(i.category == "dostępność" and i.message == "HTTP 502 Bad Gateway (/status/502)"
+               for i in r.issues)

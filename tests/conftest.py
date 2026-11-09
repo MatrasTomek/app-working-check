@@ -46,6 +46,15 @@ class _Handler(SimpleHTTPRequestHandler):
             elif path == "/hang":
                 time.sleep(4)
                 self._send(200, b"late")
+            elif path == "/slow-doc":
+                # dokument, który nigdy się nie kończy w limicie: częściowa treść, potem cisza
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write('<!doctype html><html><head><meta charset="utf-8"></head>'
+                                 '<body><h1>Częściowy dokument</h1>'.encode("utf-8"))
+                self.wfile.flush()
+                time.sleep(4)
             else:
                 super().do_GET()
         except (BrokenPipeError, ConnectionResetError):
@@ -60,6 +69,8 @@ class _Handler(SimpleHTTPRequestHandler):
                 self._send(404, b"not found")
             elif form.get("user") == ["jan"] and form.get("pass") == ["sekret"]:
                 self._send(302, headers={"Location": "/dashboard.html"})
+            elif form.get("pass") == ["to502"]:
+                self._send(302, headers={"Location": "/status/502"})
             elif form.get("pass") == ["slow"]:
                 # odpowiedź strumieniowana: <body> od razu, formularz z alertem po sekundzie
                 self.send_response(200)

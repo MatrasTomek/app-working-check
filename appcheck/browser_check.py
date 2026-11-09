@@ -46,8 +46,11 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
     """Sprawdza aplikację; nigdy nie rzuca wyjątku."""
     result = AppResult(name=app.name, url=app.url)
     secrets = [app.password]
-    app_host = urlsplit(app.url).hostname or ""
-    state = {"logged_in": False, "done": False}
+    # host z konfiguracji + hosty dokumentu głównego aż do końca pierwszej nawigacji (przekierowania)
+    app_hosts = {urlsplit(app.url).hostname or ""}
+    # main_doc: ostatnia odpowiedź (Response) lub błąd (url, powód) dokumentu głównego;
+    # judged: ostatni już oceniony — na starcie odpowiedź pierwszego goto
+    state = {"logged_in": False, "done": False, "goto_done": False, "main_doc": None, "judged": None}
 
     def add_issue(issue: Issue | None) -> None:
         if issue is not None:
@@ -61,7 +64,7 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
             rec.method, mask_secrets(rec.url, secrets), rec.resource_type, rec.status,
             mask_secrets(rec.error, secrets) if rec.error else None,
         )
-        add_issue(classify_request(masked, app_host, state["logged_in"]))
+        add_issue(classify_request(masked, app_hosts, state["logged_in"]))
         if not (masked.error and "ERR_ABORTED" in masked.error):
             result.failed_requests.append(masked)
 
@@ -87,16 +90,44 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
             add_issue(classify_page_error(mask_secrets(err.stack or str(err), secrets)))
 
         def on_requestfailed(request: Request) -> None:
-            if state["done"] or _is_main_document(request, page):
-                return  # dostępność oceniana osobno
-            record(RequestRecord(request.method, request.url, request.resource_type,
-                                 None, request.failure or "nieznany błąd"))
+            if state["done"]:
+                return
+            failure = request.failure or "nieznany błąd"
+            if _is_main_document(request, page):  # dostępność oceniana w judge_main_document
+                if "ERR_ABORTED" not in failure:
+                    state["main_doc"] = (request.url, failure)
+                return
+            record(RequestRecord(request.method, request.url, request.resource_type, None, failure))
 
         def on_response(response: Response) -> None:
-            if state["done"] or response.status < 400 or _is_main_document(response.request, page):
+            if state["done"]:
+                return
+            if _is_main_document(response.request, page):
+                if not state["goto_done"]:
+                    app_hosts.add(urlsplit(response.url).hostname or "")
+                state["main_doc"] = response
+                return
+            if response.status < 400:
                 return
             req = response.request
             record(RequestRecord(req.method, req.url, req.resource_type, response.status, None))
+
+        def judge_main_document() -> None:
+            """Ocena dokumentu po nawigacji innej niż pierwsze goto (przekierowanie JS, logowanie)."""
+            latest = state["main_doc"]
+            if latest is None or latest is state["judged"]:
+                return
+            state["judged"] = latest
+            if isinstance(latest, tuple):
+                url, failure = latest
+                message = f"Serwer nie odpowiada: {failure}"
+            elif latest.status >= 400:
+                url, message = latest.url, f"HTTP {latest.status} {latest.status_text}".strip()
+            else:
+                return
+            if url != app.url:
+                message += f" ({urlsplit(url).path or '/'})"
+            add_issue(Issue(Severity.ERROR, "dostępność", message))
 
         page.on("console", on_console)
         page.on("pageerror", on_pageerror)
@@ -105,28 +136,38 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
 
         start = time.monotonic()
         try:
-            resp = page.goto(app.url, wait_until="load", timeout=timeout_ms)
+            resp = page.goto(app.url, wait_until="domcontentloaded", timeout=timeout_ms)
         except Exception as e:  # błąd sieci/SSL/timeout dokumentu
-            result.load_time_ms = round((time.monotonic() - start) * 1000)
             first_line = str(e).strip().splitlines()[0] if str(e).strip() else type(e).__name__
             add_issue(Issue(Severity.ERROR, "dostępność", f"Serwer nie odpowiada: {first_line}"))
             if isinstance(e, PlaywrightTimeout) and page.url != "about:blank":
                 state["done"] = True  # strona częściowo się otworzyła — warto zobaczyć, jak wygląda
                 _take_screenshot(page, app, screenshot_dir, result)
             return result
-        result.load_time_ms = round((time.monotonic() - start) * 1000)
+        state["goto_done"] = True
+        state["judged"] = resp
+        app_hosts.add(urlsplit(page.url).hostname or "")
 
         if resp is not None and resp.status >= 400:
             add_issue(Issue(Severity.ERROR, "dostępność", f"HTTP {resp.status} {resp.status_text}".strip()))
 
         try:
-            page.wait_for_load_state("networkidle", timeout=timeout_ms)
-        except Exception:
-            pass  # brak networkidle nie jest błędem
+            page.wait_for_load_state("load", timeout=timeout_ms)
+            result.load_time_ms = round((time.monotonic() - start) * 1000)
+        except PlaywrightTimeout:
+            # dokument jest, ale wisi zasób (obraz, skrypt zewnętrzny) — strona zwykle działa
+            add_issue(Issue(Severity.WARNING, "dostępność",
+                            f"Strona nie zakończyła ładowania w {app.timeout} s"))
+        else:
+            try:
+                page.wait_for_load_state("networkidle", timeout=timeout_ms)
+            except Exception:
+                pass  # brak networkidle nie jest błędem
 
         empty_page = Issue(Severity.ERROR, "wyświetlanie", "Pusta strona — nic się nie wyrenderowało")
         if not _has_content(page):
             add_issue(empty_page)
+        judge_main_document()
 
         if app.needs_login:
             login_issue = perform_login(page, app)
@@ -140,6 +181,7 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
                     add_issue(empty_page)
             else:
                 add_issue(login_issue)
+            judge_main_document()
 
         state["done"] = True
         if result.status is Severity.ERROR:
