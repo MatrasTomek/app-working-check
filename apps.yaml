@@ -1,0 +1,13 @@
+# Lista sprawdzanych aplikacji. Nazwy muszą być unikalne.
+apps:
+  - name: Przykład
+    url: https://example.com
+
+  # Aplikacja z logowaniem — dane w .env jako PANEL_USER i PANEL_PASS:
+  # - name: Panel klienta
+  #   url: https://panel.example.com/login
+  #   login: PANEL                      # prefiks zmiennych z .env
+  #   user_selector: "#email"           # selektor CSS pola loginu (opcjonalnie)
+  #   pass_selector: "#password"        # selektor CSS pola hasła (opcjonalnie)
+  #   submit_selector: "button.login"   # selektor CSS przycisku logowania (opcjonalnie)
+  #   timeout: 45                       # limit w sekundach (domyślnie 30)
