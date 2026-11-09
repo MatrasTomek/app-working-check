@@ -60,6 +60,18 @@ class _Handler(SimpleHTTPRequestHandler):
                 self._send(404, b"not found")
             elif form.get("user") == ["jan"] and form.get("pass") == ["sekret"]:
                 self._send(302, headers={"Location": "/dashboard.html"})
+            elif form.get("pass") == ["slow"]:
+                # odpowiedź strumieniowana: <body> od razu, formularz z alertem po sekundzie
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b'<!doctype html><html><head><meta charset="utf-8"></head><body>')
+                self.wfile.flush()
+                time.sleep(1)
+                page = (SITE_DIR / "login.html").read_text(encoding="utf-8")
+                tail = page.split("<body>", 1)[1].replace(
+                    "</body>", '<div role="alert">Nieprawidłowy login lub hasło</div></body>')
+                self.wfile.write(tail.encode("utf-8"))
             else:
                 body = (SITE_DIR / "login.html").read_text(encoding="utf-8").replace(
                     "</body>", '<div role="alert">Nieprawidłowy login lub hasło</div></body>')

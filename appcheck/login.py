@@ -27,8 +27,8 @@ _NO_PASSWORD_JS = """() => !Array.from(document.querySelectorAll('input[type=pas
 _URL_OR_NO_PASSWORD_JS = f"""old => location.href !== old || ({_NO_PASSWORD_JS})()"""
 
 _ALERT_SELECTOR = "[role=alert]:visible, [class*=error]:visible, [class*=invalid]:visible"
-_SUBMIT_SELECTOR = ("button[type=submit]:visible, input[type=submit]:visible, "
-                    "button:not([type]):visible")
+_EXPLICIT_SUBMIT = "button[type=submit]:visible, input[type=submit]:visible"
+_UNTYPED_SUBMIT = "button:not([type]):visible"
 _NO_FORM = "Nie znaleziono formularza logowania"
 _GRACE_MS = 2000  # czas na zniknięcie pola hasła po zmianie adresu (SPA)
 
@@ -44,8 +44,12 @@ def _find_user_field(page: Page, password: Locator) -> Locator | None:
 
 
 def _find_submit(password: Locator) -> Locator | None:
-    button = password.locator("xpath=ancestor::form[1]").locator(_SUBMIT_SELECTOR).first
-    return button if button.count() else None
+    form = password.locator("xpath=ancestor::form[1]")
+    for selector in (_EXPLICIT_SUBMIT, _UNTYPED_SUBMIT):  # przycisk bez type to ostateczność (np. "pokaż hasło")
+        button = form.locator(selector).first
+        if button.count():
+            return button
+    return None
 
 
 def _failure_text(page: Page) -> str | None:
@@ -68,8 +72,9 @@ def perform_login(page: Page, app: AppConfig) -> Issue | None:
             user = page.locator(app.user_selector).first
         else:
             user = _find_user_field(page, password)
-        if user is not None:
-            user.fill(app.username or "", timeout=timeout_ms)
+            if user is None:
+                return _failure(_NO_FORM)
+        user.fill(app.username or "", timeout=timeout_ms)
         password.fill(app.password or "", timeout=timeout_ms)
 
         if app.submit_selector:
@@ -84,6 +89,8 @@ def perform_login(page: Page, app: AppConfig) -> Issue | None:
 
         try:
             page.wait_for_function(_URL_OR_NO_PASSWORD_JS, arg=url_before, timeout=timeout_ms)
+            # pełna nawigacja: poczekaj na nowy dokument, zanim ocenimy obecność pola hasła
+            page.wait_for_load_state("domcontentloaded", timeout=timeout_ms)
             # zmiana adresu bez zniknięcia pola hasła (np. przeładowanie z błędem) to jeszcze nie sukces
             page.wait_for_function(_NO_PASSWORD_JS, timeout=_GRACE_MS)
             return None

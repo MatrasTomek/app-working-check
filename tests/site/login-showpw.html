@@ -1,0 +1,8 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Logowanie z podglądem hasła</title></head>
+<body><h1>Zaloguj się</h1>
+<form method="post" action="/login" novalidate>
+<input name="user" type="text">
+<input name="pass" type="password">
+<button id="show" onclick="event.preventDefault(); fetch('/api/500');">Pokaż hasło</button>
+<button type="submit">Zaloguj</button>
+</form></body></html>

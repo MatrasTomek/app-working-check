@@ -67,7 +67,10 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
 
     context = None
     try:
+        timeout_ms = app.timeout * 1000
         context = browser.new_context(ignore_https_errors=False)
+        context.set_default_timeout(timeout_ms)
+        context.set_default_navigation_timeout(timeout_ms)
         page = context.new_page()
 
         def on_console(msg) -> None:
@@ -100,7 +103,6 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
         page.on("requestfailed", on_requestfailed)
         page.on("response", on_response)
 
-        timeout_ms = app.timeout * 1000
         start = time.monotonic()
         try:
             resp = page.goto(app.url, wait_until="load", timeout=timeout_ms)

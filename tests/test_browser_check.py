@@ -91,3 +91,21 @@ def test_goto_timeout_with_partial_page_takes_screenshot(browser, site, tmp_path
     r = run(browser, f"{site}/hanging-img.html", tmp_path, timeout=1)
     assert any("Serwer nie odpowiada" in i.message for i in r.issues)
     assert r.screenshot is not None and r.screenshot.exists()
+
+
+def test_rendering_check_retries_after_destroyed_context(browser, site, tmp_path, monkeypatch):
+    import appcheck.browser_check as bc
+    from playwright.sync_api import Error, Page
+
+    real, calls = Page.evaluate, []
+
+    def evaluate(self, expression, *a, **kw):
+        if expression == bc._HAS_CONTENT_JS:
+            calls.append(1)
+            if len(calls) == 1:
+                raise Error("Execution context was destroyed, most likely because of a navigation")
+        return real(self, expression, *a, **kw)
+
+    monkeypatch.setattr(Page, "evaluate", evaluate)
+    assert run(browser, f"{site}/ok.html", tmp_path).status is Severity.OK
+    assert len(calls) == 2
