@@ -5,6 +5,8 @@ import ipaddress
 from typing import Collection
 from urllib.parse import urlsplit
 
+import tldextract
+
 from appcheck.result import Issue, RequestRecord, Severity
 
 
@@ -12,26 +14,33 @@ def _failed(rec: RequestRecord) -> bool:
     return bool(rec.error) or (rec.status is not None and rec.status >= 400)
 
 
-def _is_ip(host: str) -> bool:
+# Lista sufiksów publicznych (PSL) wbudowana w bibliotekę — bez pobierania z sieci.
+# Domeny prywatne (np. herokuapp.com, github.io) też są sufiksami: app1.herokuapp.com
+# i app2.herokuapp.com to różni właściciele.
+_extract = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
+
+
+def _registrable_domain(host: str) -> str | None:
+    """Domena rejestrowalna, np. ``firma.com.pl`` dla ``panel.firma.com.pl``; ``None`` dla IP/localhost."""
     try:
         ipaddress.ip_address(host)
-        return True
+        return None
     except ValueError:
-        return False
+        pass
+    ext = _extract(host)
+    if not ext.domain or not ext.suffix:
+        return None
+    return f"{ext.domain}.{ext.suffix}"
 
 
 def _is_own_host(host: str, app_hosts: Collection[str]) -> bool:
-    """Host aplikacji lub jej domeny nadrzędnej (np. api.firma.com.pl dla panel.firma.com.pl)."""
-    for app_host in app_hosts:
-        if host == app_host:
-            return True
-        if _is_ip(app_host) or "." not in app_host:
-            continue
-        parent = app_host.split(".", 1)[1]
-        # domena nadrzędna tylko gdy ma co najmniej 2 etykiety (example.com → brak, tylko dokładnie)
-        if parent.count(".") >= 1 and host.endswith("." + parent):
-            return True
-    return False
+    """Host aplikacji albo inny host w tej samej domenie rejestrowalnej (np. api.firma.com.pl)."""
+    if not host:
+        return False
+    if host in app_hosts:
+        return True
+    domain = _registrable_domain(host)
+    return domain is not None and any(_registrable_domain(h) == domain for h in app_hosts if h)
 
 
 def classify_request(rec: RequestRecord, app_hosts: Collection[str], logged_in: bool) -> Issue | None:

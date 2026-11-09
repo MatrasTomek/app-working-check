@@ -92,9 +92,10 @@ Opcje:
 - `--env-file PLIK` — plik z danymi logowania (domyślnie `.env`; brak pliku nie jest błędem).
 
 Raporty trafiają do `reports/`: `reports/raport-RRRR-MM-DD_GG-MM-SS.html`, a zrzuty ekranu
-aplikacji ze statusem BŁĄD do `reports/RRRR-MM-DD_GG-MM-SS/<nazwa>.png`, gdzie `<nazwa>` to
+aplikacji ze statusem BŁĄD do `reports/RRRR-MM-DD_GG-MM-SS/<nazwa>-<skrót>.png`, gdzie `<nazwa>` to
 znormalizowana nazwa aplikacji („slug”: małe litery bez polskich znaków, inne znaki zamienione na
-`-`, np. „Panel księgowości” → `panel-ksiegowosci.png`). Pełna ścieżka raportu jest wypisywana
+`-`), a `<skrót>` to 6 znaków wyliczonych z pełnej nazwy — np. „Panel księgowości” →
+`panel-ksiegowosci-1a2b3c.png`. Dzięki skrótowi aplikacje „A/B” i „A-B” nie nadpiszą sobie zrzutów. Pełna ścieżka raportu jest wypisywana
 na końcu (`Raport: ...`).
 
 Domyślne `apps.yaml`, `.env` i `reports/` są szukane w katalogu skryptu (obok `check.py`),
@@ -116,9 +117,11 @@ Status aplikacji to najgorszy ze statusów jej problemów.
   logowanie lub brak formularza, odpowiedź 5xx / zerwane żądanie do API aplikacji, nieudany skrypt
   z tej samej domeny, błąd skryptu.
 
-API „aplikacji” to żądania do hosta z `url` (lub hosta, na który przekierował adres startowy)
-albo do jego domeny nadrzędnej, o ile ma ona co najmniej dwa człony — np. dla
-`panel.firma.com.pl` także `api.firma.com.pl`, ale dla `example.com` tylko sam `example.com`.
+API „aplikacji” to żądania do tej samej domeny co `url` (lub host, na który przekierował adres
+startowy), łącznie z jej subdomenami — np. dla `panel.firma.com.pl` także `api.firma.com.pl`
+i `firma.com.pl`, a dla `example.com` także `api.example.com`. Domenę wyznacza lista sufiksów
+publicznych (Public Suffix List), więc `sklep.com.pl` nie jest „tą samą domeną” co `firma.com.pl`,
+a `app2.herokuapp.com` co `app1.herokuapp.com`. Adresy IP i `localhost` muszą zgadzać się dokładnie.
 
 ## Kody wyjścia
 
