@@ -1,13 +1,14 @@
 """Model wyniku sprawdzenia aplikacji oraz pomocnicze funkcje."""
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote
 
 
 class Severity(IntEnum):
@@ -59,14 +60,29 @@ class AppResult:
         return max((i.severity for i in self.issues), default=Severity.OK)
 
 
+def _secret_variants(secret: str) -> set[str]:
+    """Postaci, w jakich sekret może trafić do URL-i, konsoli i komunikatów."""
+    encoded: set[str] = set()
+    # "": quote/quote_plus; "*": formularz Chromium i URL fetch; "!'()*": encodeURIComponent
+    for safe in ("", "*", "!'()*"):
+        q = quote(secret, safe=safe)  # quote nigdy nie koduje '~', Chromium w formularzu — tak (%7E)
+        for spaced in (q, q.replace("%20", "+")):
+            encoded |= {spaced, spaced.replace("~", "%7E")}
+    encoded |= {re.sub(r"%[0-9A-F]{2}", lambda m: m.group().lower(), v) for v in encoded}
+    return encoded | {
+        secret,
+        json.dumps(secret)[1:-1],
+        json.dumps(secret, ensure_ascii=False)[1:-1],  # JSON.stringify nie koduje znaków spoza ASCII
+    }
+
+
 def mask_secrets(text: str, secrets: Iterable[str | None]) -> str:
-    """Zastępuje sekrety (surowe i zakodowane w URL) ciągiem ``***``."""
+    """Zastępuje sekrety (surowe, zakodowane w URL lub w JSON) ciągiem ``***``."""
     for secret in secrets:
         if not secret:
             continue
         # najpierw dłuższe warianty, by nie zostawić fragmentów
-        variants = sorted({secret, quote(secret, safe=""), quote_plus(secret)}, key=len, reverse=True)
-        for variant in variants:
+        for variant in sorted(_secret_variants(secret), key=len, reverse=True):
             text = text.replace(variant, "***")
     return text
 

@@ -73,3 +73,33 @@ def test_default_timeout_and_selectors(tmp_path):
     app = load_config(write(tmp_path, y), {"P_USER": "u", "P_PASS": "p"})[0]
     assert app.timeout == 30
     assert (app.user_selector, app.pass_selector, app.submit_selector) == ("#u", "#p", "#s")
+
+
+def test_non_utf8_yaml_gives_clear_message(tmp_path):
+    p = tmp_path / "apps.yaml"
+    p.write_bytes("apps:\n  - {name: Księgowość, url: 'https://a'}\n".encode("cp1250"))
+    with pytest.raises(ConfigError, match="apps.yaml: plik nie jest zapisany w UTF-8 — zapisz go jako UTF-8"):
+        load_config(p, {})
+
+
+def test_utf16_env_file_gives_clear_message(tmp_path):
+    from appcheck.config import load_env_file
+
+    p = tmp_path / ".env"
+    p.write_text("P_USER=jan\nP_PASS=x\n", encoding="utf-16")  # jak `>` w PowerShell 5.1
+    with pytest.raises(ConfigError, match=r"\.env: plik nie jest zapisany w UTF-8 — zapisz go jako UTF-8"):
+        load_env_file(p)
+
+
+def test_env_file_loaded_without_overriding(tmp_path, monkeypatch):
+    from appcheck.config import load_env_file
+
+    monkeypatch.setenv("E_USER", "z-systemu")
+    monkeypatch.setenv("E_PASS", "")
+    monkeypatch.delenv("E_PASS")  # monkeypatch przywróci stan po teście
+    p = tmp_path / ".env"
+    p.write_text("E_USER=jan\nE_PASS=ł\n", encoding="utf-8-sig")
+    load_env_file(p)
+    import os
+    assert os.environ["E_USER"] == "z-systemu" and os.environ["E_PASS"] == "ł"
+    load_env_file(tmp_path / "brak")  # brak pliku nie jest błędem

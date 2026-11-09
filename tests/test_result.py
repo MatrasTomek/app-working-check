@@ -37,3 +37,18 @@ def test_result_lists_not_shared():
     a, b = AppResult("a", "u"), AppResult("b", "u")
     a.console_messages.append("x")
     assert b.console_messages == []
+
+
+def test_mask_secrets_chromium_form_encoding():
+    # Chromium (formularz GET): '*' bez zmian, spacja jako '+', '~' jako %7E
+    s = "Ab* c~1"
+    assert mask_secrets("pass=Ab*+c%7E1&x=1", [s]) == "pass=***&x=1"
+    assert mask_secrets("pass=Ab*%20c~1", [s]) == "pass=***"  # URL fetch / encodeURIComponent
+    assert mask_secrets("pass=Ab%2a%20c%7e1", [s]) == "pass=***"  # małe litery w kodach %
+
+
+def test_mask_secrets_lowercase_hex_and_json():
+    s = 'p@"ł'
+    assert mask_secrets("p=p%40%22%c5%82", [s]) == "p=***"
+    assert mask_secrets('{"pass":"p@\\"ł"}', [s]) == '{"pass":"***"}'
+    assert mask_secrets('{"pass":"p@\\"\\u0142"}', [s]) == '{"pass":"***"}'

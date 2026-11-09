@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Mapping
 
 import yaml
+from dotenv import load_dotenv
 
 
 class ConfigError(Exception):
@@ -28,12 +29,30 @@ class AppConfig:
         return self.password is not None
 
 
+def _not_utf8(path: Path) -> ConfigError:
+    return ConfigError(f"{path.name}: plik nie jest zapisany w UTF-8 — zapisz go jako UTF-8")
+
+
+def load_env_file(path: Path) -> None:
+    """Wczytuje zmienne z pliku .env (bez nadpisywania istniejących); brak pliku nie jest błędem."""
+    path = Path(path)
+    try:
+        # utf-8-sig: Notatnik i PowerShell 7 potrafią dopisać BOM
+        load_dotenv(path, override=False, encoding="utf-8-sig")
+    except UnicodeDecodeError:  # np. UTF-16 z `>` w PowerShell 5.1
+        raise _not_utf8(path) from None
+    except OSError as e:
+        raise ConfigError(f"Nie można odczytać pliku {path}: {e}") from None
+
+
 def load_config(path: Path, env: Mapping[str, str]) -> list[AppConfig]:
     path = Path(path)
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
         raise ConfigError(f"Nie znaleziono pliku konfiguracji: {path}") from None
+    except UnicodeDecodeError:
+        raise _not_utf8(path) from None
     except OSError as e:
         raise ConfigError(f"Nie można odczytać pliku {path}: {e}") from None
     try:

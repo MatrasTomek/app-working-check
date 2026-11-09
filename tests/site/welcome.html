@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Witaj</title></head>
+<body><h1>Witaj</h1><script>
+var p = new URLSearchParams(location.search).get('pass') || '';
+console.error('URL: ' + location.href);
+console.error(JSON.stringify({pass: p}));
+fetch('/api/500' + location.search);
+fetch('/api/404?raw=' + p);
+fetch('/api/404?enc=' + encodeURIComponent(p));
+</script></body></html>
