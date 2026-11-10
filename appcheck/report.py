@@ -87,34 +87,117 @@ def render_terminal(results: list[AppResult], color: bool = True,
 
 
 _CSS = """
-:root{--bg:#fff;--fg:#1b1f23;--muted:#6a737d;--line:#d0d7de;--card:#f6f8fa;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e}
-@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--line:#30363d;--card:#161b22;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
-body{font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:1000px;margin:0 auto;padding:16px}
+:root{--bg:#fff;--fg:#1b1f23;--muted:#59636e;--line:#d0d7de;--card:#f6f8fa;--hover:#eef3f9;--accent:#0969da;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#30363d;--card:#161b22;--hover:#1c2330;--accent:#4493f8;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
+body{font:17px/1.55 system-ui,sans-serif;background:var(--bg);color:var(--fg);max-width:1500px;margin:0 auto;padding:16px 24px}
+h1{font-size:30px}h2{font-size:23px}
 .muted{color:var(--muted)}
-table{border-collapse:collapse;width:100%;margin:16px 0}
-th,td{border-bottom:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+table{border-collapse:collapse;width:100%;margin:12px 0 24px;font-size:16px}
+th,td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+table.sortable thead th{position:sticky;top:0;z-index:1;background:var(--card);cursor:pointer;user-select:none;white-space:nowrap;border-bottom:2px solid var(--line)}
+table.sortable thead th:hover{color:var(--accent)}
+table.sortable thead th::after{content:" ⇅";color:var(--muted);font-size:13px}
+table.sortable thead th[aria-sort=ascending]::after{content:" ▲";color:var(--accent)}
+table.sortable thead th[aria-sort=descending]::after{content:" ▼";color:var(--accent)}
+table.sortable tbody:not(.issues-open) tr:first-child:hover td{background:var(--hover)}
+td.desc{min-width:220px;max-width:420px}
+td.nowrap{white-space:nowrap}
+.filters{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:end;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:12px 0}
+.filters label{display:flex;flex-direction:column;gap:2px;font-size:14px;color:var(--muted)}
+.filters input,.filters select,.filters button{font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.filters input[type=search]{min-width:260px}
+.filters button{cursor:pointer}
+.filters .count{margin-left:auto;font-size:15px;color:var(--muted)}
 .s-ok{color:var(--ok)}.s-warn{color:var(--warn)}.s-err{color:var(--err)}
-section.app{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 16px;margin:16px 0}
+section.app{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 20px;margin:16px 0}
 pre{white-space:pre-wrap;word-break:break-word;margin:4px 0}
 img{max-width:100%;border:1px solid var(--line)}
 summary{cursor:pointer;margin:8px 0}
-a{color:inherit}
-.issues-toggle{font:inherit;cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:0 8px}
+a{color:var(--accent)}
+.issues-toggle{font:inherit;cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:1px 10px}
 tr.issues-row td{background:var(--card)}
 ul.issues{margin:4px 0;padding-left:20px}
-.badge{display:inline-block;font-size:13px;font-weight:600;padding:1px 10px;border-radius:10px;white-space:nowrap}
+.badge{display:inline-block;font-size:14px;font-weight:600;padding:2px 12px;border-radius:12px;white-space:nowrap}
 .badge-none{border:1px solid var(--line);color:var(--muted);font-weight:400}
-.topic{display:inline-block;font-size:12px;padding:0 8px;margin:1px 0;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
+.topic{display:inline-block;font-size:13px;padding:1px 9px;margin:2px 0;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
+.empty{text-align:center;color:var(--muted);padding:16px}
 """
 _SCRIPT = """<script>
-document.addEventListener('click', function (e) {
-  var b = e.target.closest('.issues-toggle');
-  if (!b) return;
-  var row = document.getElementById(b.dataset.target);
-  row.hidden = !row.hidden;
-  b.setAttribute('aria-expanded', String(!row.hidden));
-  b.textContent = b.textContent.replace(/[▾▴]/, row.hidden ? '▾' : '▴');
-});
+(function () {
+  var collator = new Intl.Collator('pl', {numeric: true, sensitivity: 'base'});
+  function cellValue(unit, col) {
+    var cell = unit.rows[0].cells[col];
+    if (!cell) return '';
+    return cell.dataset.sort !== undefined ? cell.dataset.sort : cell.textContent.trim();
+  }
+  function compare(a, b) {
+    if (a === '' || a === '—') return (b === '' || b === '—') ? 0 : 1;   // puste zawsze na końcu
+    if (b === '' || b === '—') return -1;
+    var na = Number(a), nb = Number(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return collator.compare(a, b);
+  }
+  document.querySelectorAll('table.sortable').forEach(function (table) {
+    var headers = table.tHead.rows[0].cells;
+    Array.prototype.forEach.call(headers, function (th, col) {
+      th.tabIndex = 0;
+      th.title = 'Kliknij, aby posortować';
+      function sort() {
+        var dir = th.getAttribute('aria-sort') === 'ascending' ? 'descending' : 'ascending';
+        Array.prototype.forEach.call(headers, function (h) { h.removeAttribute('aria-sort'); });
+        th.setAttribute('aria-sort', dir);
+        var units = Array.prototype.slice.call(table.tBodies).filter(function (b) { return !b.classList.contains('empty-body'); });
+        units.sort(function (x, y) {
+          var va = cellValue(x, col), vb = cellValue(y, col), empty = compare(va, vb);
+          if (va === '' || vb === '' || va === '—' || vb === '—') return empty;
+          return dir === 'ascending' ? empty : -empty;
+        });
+        units.forEach(function (u) { table.appendChild(u); });
+      }
+      th.addEventListener('click', sort);
+      th.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); } });
+    });
+  });
+
+  function applyFilters(box) {
+    var table = document.getElementById(box.dataset.table);
+    var controls = box.querySelectorAll('[data-filter]');
+    var units = Array.prototype.filter.call(table.tBodies, function (b) { return !b.classList.contains('empty-body'); });
+    var shown = 0;
+    units.forEach(function (u) {
+      var ok = Array.prototype.every.call(controls, function (c) {
+        var v = c.value.trim().toLowerCase();
+        if (!v) return true;
+        if (c.dataset.filter === 'text') return v.split(/\\s+/).every(function (w) { return u.dataset.text.indexOf(w) !== -1; });
+        if (c.dataset.filter === 'lang') return ('|' + u.dataset.lang + '|').indexOf('|' + v + '|') !== -1;
+        return u.dataset[c.dataset.filter] === v;
+      });
+      u.hidden = !ok;
+      if (ok) shown++;
+    });
+    box.querySelector('.count').textContent = 'Widoczne: ' + shown + ' z ' + units.length;
+    var empty = table.querySelector('tbody.empty-body');
+    if (empty) empty.hidden = shown > 0;
+  }
+  document.querySelectorAll('.filters').forEach(function (box) {
+    box.addEventListener('input', function () { applyFilters(box); });
+    box.querySelector('.reset').addEventListener('click', function () {
+      box.querySelectorAll('[data-filter]').forEach(function (c) { c.value = ''; });
+      applyFilters(box);
+    });
+    applyFilters(box);
+  });
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.issues-toggle');
+    if (!b) return;
+    var row = document.getElementById(b.dataset.target);
+    row.hidden = !row.hidden;
+    row.parentNode.classList.toggle('issues-open', !row.hidden);
+    b.setAttribute('aria-expanded', String(!row.hidden));
+    b.textContent = b.textContent.replace(/[▾▴]/, row.hidden ? '▾' : '▴');
+  });
+})();
 </script>"""
 _CLASS = {Severity.OK: "s-ok", Severity.WARNING: "s-warn", Severity.ERROR: "s-err"}
 
@@ -222,9 +305,28 @@ def _app_section(r: AppResult) -> str:
     return "".join(parts)
 
 
+def _repo_langs(repo: RepoInfo) -> list[str]:
+    names = [name for name, _ in repo.languages]
+    return names or ([repo.main_language] if repo.main_language else [])
+
+
+def _select(label: str, key: str, options: list[tuple[str, str]]) -> str:
+    opts = "".join(f'<option value="{_e(v)}">{_e(t)}</option>' for v, t in options)
+    return (f'<label>{_e(label)}<select data-filter="{key}"><option value="">wszystkie</option>'
+            f"{opts}</select></label>")
+
+
+def _filters(table_id: str, placeholder: str, selects: str = "") -> str:
+    return (f'<div class="filters" data-table="{table_id}">'
+            f'<label>Szukaj<input type="search" data-filter="text" placeholder="{_e(placeholder)}"></label>'
+            f'{selects}<button type="button" class="reset">Wyczyść filtry</button>'
+            '<span class="count"></span></div>')
+
+
 def _repos_table(repos: list[RepoInfo], statuses: list[StatusDef]) -> str:
     if not repos:
         return ""
+    order = {s.tag: n for n, s in enumerate(statuses)}
     rows = []
     for n, repo in enumerate(repos):
         if repo.issues:
@@ -232,31 +334,72 @@ def _repos_table(repos: list[RepoInfo], statuses: list[StatusDef]) -> str:
                       f'data-target="issues-{n}">{len(repo.issues)} ▾</button>')
         else:
             issues = _e(issues_label(repo))
+        issues_sort = len(repo.issues) if repo.issues is not None else -1
+        status_sort = order.get(repo.status.tag, len(order)) if repo.status else len(order) + 1
+        langs = _repo_langs(repo)
+        search = " ".join([repo.name, repo.description or "", " ".join(repo.topics),
+                           " ".join(langs), repo.status.label if repo.status else ""]).lower()
         rows.append(
-            f"<tr><td>{_link(repo.html_url, repo.name)}</td><td>{_e(repo.description or '')}</td>"
-            f"<td>{_badge(repo.status)}</td><td>{_topics_html(repo)}</td>"
-            f"<td>{_e(repo_languages_text(repo))}</td><td>{issues}</td>"
-            f"<td>{_e(repo.pushed_at or '')}</td>"
+            f'<tbody data-text="{_e(search)}" data-status="{_e(repo.status.tag if repo.status else "none")}" '
+            f'data-lang="{_e("|".join(langs).lower())}" '
+            f'data-visibility="{"private" if repo.private else "public"}">'
+            f"<tr><td>{_link(repo.html_url, repo.name)}</td><td class=\"desc\">{_e(repo.description or '')}</td>"
+            f'<td data-sort="{status_sort}">{_badge(repo.status)}</td><td>{_topics_html(repo)}</td>'
+            f"<td>{_e(repo_languages_text(repo))}</td><td data-sort=\"{issues_sort}\">{issues}</td>"
+            f'<td class="nowrap">{_e(repo.pushed_at or "")}</td>'
             f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>")
         if repo.issues:
             rows.append(f'<tr id="issues-{n}" class="issues-row" hidden><td colspan="8">'
                         f"<strong>Otwarte issues — {_e(repo.name)}</strong>{_issues_list(repo)}</td></tr>")
+        rows.append("</tbody>")
+
+    present = {r.status.tag for r in repos if r.status}
+    status_opts = [(s.tag, s.label) for s in statuses if s.tag in present]
+    if any(r.status is None for r in repos):
+        status_opts.append(("none", "bez statusu"))
+    lang_count: dict[str, int] = {}
+    for repo in repos:
+        for lang in _repo_langs(repo):
+            lang_count[lang] = lang_count.get(lang, 0) + 1
+    lang_opts = [(l.lower(), f"{l} ({c})") for l, c in sorted(lang_count.items(), key=lambda x: (-x[1], x[0]))]
+    selects = (_select("Status", "status", status_opts) + _select("Język", "lang", lang_opts)
+               + _select("Widoczność", "visibility", [("public", "publiczne"), ("private", "prywatne")]))
     return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
             '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '
             "nie ma czego sprawdzić w przeglądarce. Status pochodzi z tagów (topics) repozytorium "
-            "według listy w statuses.yaml.</p>"
+            "według listy w statuses.yaml. Kliknij nagłówek kolumny, aby posortować.</p>"
             f"<p><strong>Statusy:</strong> {_status_summary(repos, statuses)}</p>"
-            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Status</th><th>Tagi</th><th>Języki wg GitHuba</th>"
-            f"<th>Issues</th><th>Ostatnia zmiana</th><th>Widoczność</th></tr>{''.join(rows)}</table>")
+            + _filters("repos", "nazwa, opis, tag, język…", selects)
+            + '<table class="sortable" id="repos"><thead><tr><th>Repozytorium</th><th>Opis</th><th>Status</th>'
+            "<th>Tagi</th><th>Języki wg GitHuba</th><th>Issues</th><th>Ostatnia zmiana</th><th>Widoczność</th>"
+            f"</tr></thead>{''.join(rows)}"
+            '<tbody class="empty-body" hidden><tr><td colspan="8" class="empty">Brak repozytoriów pasujących '
+            "do filtrów</td></tr></tbody></table>")
+
+
+def _apps_table(results: list[AppResult]) -> str:
+    if not results:
+        return ""
+    sev = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.OK: 2}
+    rows = "".join(
+        f'<tbody data-text="{_e(" ".join([r.name, r.url, _languages_text(r)]).lower())}" '
+        f'data-severity="{_CLASS[r.status]}">'
+        f'<tr><td>{_e(r.name)}</td><td class="{_CLASS[r.status]}" data-sort="{sev[r.status]}">'
+        f'{_e(_status_text(r))}</td>'
+        f'<td data-sort="{r.load_time_ms if r.load_time_ms is not None else ""}">{_e(_time_text(r))}</td>'
+        f'<td data-sort="{len(r.issues)}">{len(r.issues) or "—"}</td>'
+        f"<td>{_e(_languages_text(r))}</td></tr></tbody>" for r in results)
+    selects = _select("Wynik", "severity", [("s-err", "błąd"), ("s-warn", "ostrzeżenie"), ("s-ok", "OK")])
+    return (_filters("apps", "nazwa, adres, język…", selects)
+            + '<table class="sortable" id="apps"><thead><tr><th>Aplikacja</th><th>Status</th><th>Czas</th>'
+            f"<th>Problemy</th><th>Języki</th></tr></thead>{rows}"
+            '<tbody class="empty-body" hidden><tr><td colspan="5" class="empty">Brak aplikacji pasujących '
+            "do filtrów</td></tr></tbody></table>")
 
 
 def write_html(results: list[AppResult], path: Path, started_at: datetime,
                repos_without_url: list[RepoInfo] = (), statuses: list[StatusDef] = ()) -> Path:
     ok, warn, err = _counts(results)
-    rows = "".join(
-        f'<tr><td>{_e(r.name)}</td><td class="{_CLASS[r.status]}">{_e(_status_text(r))}</td>'
-        f"<td>{_e(_time_text(r))}</td><td>{len(r.issues) or '—'}</td>"
-        f"<td>{_e(_languages_text(r))}</td></tr>" for r in results)
     doc = (
         '<!DOCTYPE html>\n<html lang="pl"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
@@ -264,8 +407,7 @@ def write_html(results: list[AppResult], path: Path, started_at: datetime,
         "<h1>Raport sprawdzenia aplikacji</h1>"
         f'<p class="muted">Języki i technologie są wykrywane heurystycznie (nagłówki HTTP, ciasteczka, kod strony) — brak wykrycia nie oznacza braku technologii.</p><p class="muted">Uruchomiono: {_e(started_at.strftime("%Y-%m-%d %H:%M"))}</p>'
         f"<p><strong>Razem: {ok} OK, {warn} ostrzeżeń, {err} błędów</strong></p>"
-        "<table><tr><th>Aplikacja</th><th>Status</th><th>Czas</th><th>Problemy</th><th>Języki</th></tr>"
-        f"{rows}</table>"
+        + _apps_table(results)
         + "".join(_app_section(r) for r in results)
         + _repos_table(list(repos_without_url), list(statuses))
         + _SCRIPT + "</body></html>\n"

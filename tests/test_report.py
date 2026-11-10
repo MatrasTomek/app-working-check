@@ -103,7 +103,7 @@ def test_html_repos_table_status_issues_and_new_tab_links(tmp_path):
                    _statuses()).read_text(encoding="utf-8")
     assert "<th>Status</th>" in t and "<th>Tagi</th>" in t
     badge = '<span class="badge" style="background:#d29922;color:#000000">W toku'
-    assert f"<td>{badge}</span></td>" in t
+    assert f'<td data-sort="0">{badge}</span></td>' in t
     assert f"Statusy:</strong> {badge} 1</span> " in t and "bez statusu 1" in t and "Gotowe" not in t
     assert '<span class="topic">python</span>' in t
     assert 'data-target="issues-0">1 ▾</button>' in t and '<tr id="issues-0" class="issues-row" hidden>' in t
@@ -115,3 +115,45 @@ def test_html_repos_table_status_issues_and_new_tab_links(tmp_path):
 def test_terminal_repos_status_and_issues():
     out = render_terminal([], color=False, repos_without_url=[_repo_with_issues()])
     assert "lib — Python 100% · status: W toku · issues: 1" in out
+
+
+def test_html_repos_table_sorts_and_filters_in_browser(tmp_path, browser):
+    from appcheck.github import RepoInfo
+    repos = [
+        _repo_with_issues(),
+        RepoInfo("beta", "t/beta", "https://github.com/t/beta", description="sklep", languages=[("Go", 100.0)],
+                 pushed_at="2026-01-01", private=True, details=True, issues=[]),
+        RepoInfo("alfa", "t/alfa", "https://github.com/t/alfa", languages=[("Python", 80.0), ("HTML", 20.0)],
+                 pushed_at="2026-05-01", details=True, issues=[]),
+    ]
+    path = write_html([], tmp_path / "r.html", datetime.now(), repos, _statuses())
+    page = browser.new_page()
+    try:
+        page.goto(path.as_uri())
+        names = lambda: page.locator("#repos tbody:not([hidden]):not(.empty-body) tr:first-child td:first-child").all_inner_texts()
+        count = page.locator(".filters .count")
+        assert count.inner_text() == "Widoczne: 3 z 3"
+
+        page.locator("#repos th", has_text="Repozytorium").click()
+        assert names() == ["alfa", "beta", "lib"]
+        page.locator("#repos th", has_text="Repozytorium").click()
+        assert names() == ["lib", "beta", "alfa"]
+        page.locator("#repos th", has_text="Status").click()
+        assert names()[0] == "lib"  # repo ze statusem przed repozytoriami bez statusu
+
+        page.locator('[data-filter="lang"]').select_option("python")
+        assert sorted(names()) == ["alfa", "lib"] and count.inner_text() == "Widoczne: 2 z 3"
+        page.locator('[data-filter="text"]').fill("ALFA")
+        assert names() == ["alfa"]
+        page.locator('[data-filter="text"]').fill("nic-takiego")
+        assert names() == [] and page.locator("tbody.empty-body").is_visible()
+        page.locator(".filters .reset").click()
+        assert count.inner_text() == "Widoczne: 3 z 3"
+
+        page.locator('[data-filter="visibility"]').select_option("private")
+        assert names() == ["beta"]
+        page.locator(".filters .reset").click()
+        page.locator(".issues-toggle").click()  # issues jadą razem ze swoim repozytorium
+        assert page.locator("#issues-0").is_visible()
+    finally:
+        page.close()
