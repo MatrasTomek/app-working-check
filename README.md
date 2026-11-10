@@ -90,6 +90,7 @@ Opcje:
 - `--headed` — widoczne okno przeglądarki (diagnostyka),
 - `--reports-dir KATALOG` — katalog raportów (domyślnie `reports`),
 - `--env-file PLIK` — plik z danymi logowania (domyślnie `.env`; brak pliku nie jest błędem).
+- `--github KONTO` — dołącz repozytoria konta GitHub (patrz „Aplikacje z GitHuba”).
 
 Raporty trafiają do `reports/`: `reports/raport-RRRR-MM-DD_GG-MM-SS.html`, a zrzuty ekranu
 aplikacji ze statusem BŁĄD do `reports/RRRR-MM-DD_GG-MM-SS/<nazwa>-<skrót>.png`, gdzie `<nazwa>` to
@@ -123,6 +124,39 @@ i `firma.com.pl`, a dla `example.com` także `api.example.com`. Domenę wyznacza
 publicznych (Public Suffix List), więc `sklep.com.pl` nie jest „tą samą domeną” co `firma.com.pl`,
 a `app2.herokuapp.com` co `app1.herokuapp.com`. Adresy IP i `localhost` muszą zgadzać się dokładnie.
 
+## Aplikacje z GitHuba
+
+```
+python check.py --github MatrasTomek
+```
+
+Skrypt pobiera repozytoria wskazanego konta (użytkownika lub organizacji; opcję można powtarzać)
+i dołącza je do aplikacji z `apps.yaml` (z `--github` plik `apps.yaml` nie jest wymagany).
+Forki i repozytoria zarchiwizowane są pomijane.
+
+- Repozytorium z adresem aplikacji — pole „Website” (About → ⚙) albo włączone GitHub Pages — jest
+  sprawdzane w przeglądarce jak wpis z `apps.yaml`. Raport pokazuje dodatkowo link do repozytorium,
+  opis i **języki według GitHuba** z udziałem procentowym (liczone z kodu, więc dokładniejsze niż
+  wykrywanie po stronie). Gdy nazwa repozytorium powtarza się z nazwą z `apps.yaml`, w raporcie
+  występuje jako `konto/repozytorium`.
+- Repozytoria bez adresu trafiają do tabeli „Repozytoria bez adresu aplikacji” (nazwa, opis,
+  języki, data ostatniej zmiany, widoczność).
+- `--only "nazwa"` działa także dla repozytoriów.
+
+Bez tokenu widać tylko repozytoria publiczne, a GitHub pozwala na 60 zapytań na godzinę (ok. 50
+repozytoriów na uruchomienie). Z tokenem w `.env` widać też prywatne repozytoria (własne i organizacji,
+do których należysz), a limit to 5000 zapytań na godzinę:
+
+```
+GITHUB_TOKEN=github_pat_...
+```
+
+Token utworzysz na GitHubie: Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → Generate new token; „Repository access”: All repositories; uprawnienia
+„Repository permissions”: **Metadata — Read-only** (dodawane automatycznie) i **Pages — Read-only**.
+Błąd GitHuba (nieznane konto, zły token, przekroczony limit, brak połączenia) kończy skrypt
+kodem `2`.
+
 ## Języki i technologie
 
 Przy każdym sprawdzeniu skrypt próbuje też ustalić, w czym napisano aplikację. Terminal pokazuje
@@ -151,7 +185,7 @@ w raporcie jest „—”.
 - `1` — co najmniej jeden BŁĄD,
 - `2` — błąd konfiguracji lub środowiska (np. zły `apps.yaml`, plik nie w UTF-8, brak zmiennych
   w `.env`, nieznana nazwa w `--only`, brak Chromium lub błąd jej uruchomienia, nie można zapisać
-  raportu).
+  raportu, błąd pobierania danych z GitHuba).
 
 ## Testy
 

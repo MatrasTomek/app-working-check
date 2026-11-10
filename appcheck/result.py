@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote
 
+from appcheck.github import RepoInfo
 from appcheck.techdetect import TechProfile
 
 
@@ -58,6 +59,7 @@ class AppResult:
     load_time_ms: int | None = None
     screenshot: Path | None = None
     tech: TechProfile | None = None  # None — nie udało się zbadać (np. strona niedostępna)
+    repo: RepoInfo | None = None  # repozytorium GitHub, z którego pochodzi aplikacja
 
     @property
     def status(self) -> Severity:

@@ -6,6 +6,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
+from appcheck.github import RepoInfo, format_languages
 from appcheck.result import AppResult, Severity
 
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
@@ -31,6 +32,8 @@ def _backend_text(result: AppResult) -> str:
 
 
 def _languages_text(result: AppResult) -> str:
+    if result.repo is not None and result.repo.languages:
+        return f"GitHub: {format_languages(result.repo.languages)}"
     if result.tech is None:
         return "—"
     return (f"frontend: {', '.join(result.tech.frontend_languages)}; "
@@ -48,7 +51,8 @@ def _counts(results: list[AppResult]) -> tuple[int, int, int]:
     return tuple(sum(1 for r in results if r.status is s) for s in Severity)  # type: ignore[return-value]
 
 
-def render_terminal(results: list[AppResult], color: bool = True) -> str:
+def render_terminal(results: list[AppResult], color: bool = True,
+                    repos_without_url: list[RepoInfo] = ()) -> str:
     rows = [
         (r.name, _status_text(r), _time_text(r), str(len(r.issues)) if r.issues else "—", _backend_text(r))
         for r in results
@@ -69,6 +73,10 @@ def render_terminal(results: list[AppResult], color: bool = True) -> str:
             continue
         out += ["", f"{r.name}:"]
         out += [f"  - [{i.category}] {_first_line(i.message)}" for i in r.issues]
+
+    if repos_without_url:
+        out += ["", f"Repozytoria bez adresu aplikacji ({len(repos_without_url)}):"]
+        out += [f"  - {repo.name} — {format_languages(repo.languages)}" for repo in repos_without_url]
 
     ok, warn, err = _counts(results)
     out += ["", f"Razem: {ok} OK, {warn} ostrzeżeń, {err} błędów"]
@@ -101,6 +109,13 @@ def _app_section(r: AppResult) -> str:
         f'<span class="{_CLASS[r.status]}">{_e(_status_text(r))}</span></h2>',
         f'<p class="muted">{_e(r.url)} · {_e(_time_text(r))}</p>',
     ]
+    if r.repo is not None:
+        parts.append(
+            f'<p>Repozytorium: <a href="{_e(r.repo.html_url)}">{_e(r.repo.full_name)}</a>'
+            f"{' (prywatne)' if r.repo.private else ''}"
+            f" · <strong>Języki wg GitHuba:</strong> {_e(format_languages(r.repo.languages))}</p>")
+        if r.repo.description:
+            parts.append(f'<p class="muted">{_e(r.repo.description)}</p>')
     if r.tech is not None:
         parts.append(
             f"<p><strong>Języki</strong> — frontend: {_e(', '.join(r.tech.frontend_languages))}; "
@@ -144,7 +159,22 @@ def _app_section(r: AppResult) -> str:
     return "".join(parts)
 
 
-def write_html(results: list[AppResult], path: Path, started_at: datetime) -> Path:
+def _repos_table(repos: list[RepoInfo]) -> str:
+    if not repos:
+        return ""
+    rows = "".join(
+        f'<tr><td><a href="{_e(repo.html_url)}">{_e(repo.name)}</a></td><td>{_e(repo.description or "")}</td>'
+        f"<td>{_e(format_languages(repo.languages))}</td><td>{_e(repo.pushed_at or '')}</td>"
+        f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>" for repo in repos)
+    return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
+            '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '
+            "nie ma czego sprawdzić w przeglądarce.</p>"
+            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Języki wg GitHuba</th>"
+            f"<th>Ostatnia zmiana</th><th>Widoczność</th></tr>{rows}</table>")
+
+
+def write_html(results: list[AppResult], path: Path, started_at: datetime,
+               repos_without_url: list[RepoInfo] = ()) -> Path:
     ok, warn, err = _counts(results)
     rows = "".join(
         f'<tr><td>{_e(r.name)}</td><td class="{_CLASS[r.status]}">{_e(_status_text(r))}</td>'
@@ -160,6 +190,7 @@ def write_html(results: list[AppResult], path: Path, started_at: datetime) -> Pa
         "<table><tr><th>Aplikacja</th><th>Status</th><th>Czas</th><th>Problemy</th><th>Języki</th></tr>"
         f"{rows}</table>"
         + "".join(_app_section(r) for r in results)
+        + _repos_table(list(repos_without_url))
         + "</body></html>\n"
     )
     path = Path(path)

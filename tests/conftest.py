@@ -2,7 +2,8 @@ import socket
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs
+import json
+from urllib.parse import parse_qs, urlsplit
 import time
 
 import pytest
@@ -27,10 +28,57 @@ class _Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _github(self, path):
+        """Udawane GitHub REST API pod /gh: konto „tomek” (token „dobry”), „nikt” (404), „limit” (403)."""
+        base = f"http://127.0.0.1:{self.server.server_address[1]}"
+        query = parse_qs(urlsplit(self.path).query)
+        auth = self.headers.get("Authorization")
+
+        def repo(name, **kw):
+            return {"name": name, "full_name": f"tomek/{name}", "html_url": f"https://github.com/tomek/{name}",
+                    "description": None, "homepage": None, "has_pages": False, "fork": False,
+                    "archived": False, "private": False, "pushed_at": "2026-01-01T00:00:00Z", **kw}
+
+        page1 = [
+            repo("shop", homepage=f"{base}/ok.html", description="Sklep <b>internetowy</b>",
+                 pushed_at="2026-11-01T10:00:00Z"),
+            repo("docs", has_pages=True, pushed_at="2026-10-01T10:00:00Z"),
+            repo("old", archived=True),
+            repo("forked", fork=True),
+        ]
+        page2 = [repo("lib", description="Biblioteka")]
+        languages = {"shop": {"TypeScript": 700, "CSS": 300}, "docs": {"HTML": 10},
+                     "lib": {"Python": 1000}, "secret": {"Go": 5}}
+
+        def send_json(data, status=200, headers=None):
+            self._send(status, json.dumps(data).encode("utf-8"), "application/json", headers)
+
+        if auth not in (None, "Bearer dobry"):
+            return send_json({"message": "Bad credentials"}, 401)
+        if path == "/gh/users/tomek":
+            return send_json({"login": "tomek", "type": "User"})
+        if path == "/gh/users/limit":
+            return send_json({"message": "rate limit"}, 403, {"X-RateLimit-Remaining": "0"})
+        if path == "/gh/user":
+            return send_json({"login": "tomek"})
+        if path in ("/gh/users/tomek/repos", "/gh/user/repos"):
+            if query.get("page") == ["2"]:
+                extra = [repo("secret", private=True)] if path == "/gh/user/repos" else []
+                return send_json(page2 + extra)
+            return send_json(page1, headers={"Link": f'<{base}{path}?page=2>; rel="next"'})
+        if path == "/gh/repos/tomek/docs/pages":
+            return send_json({"html_url": f"{base}/tech-next.html"})
+        name = path.removeprefix("/gh/repos/tomek/").removesuffix("/languages")
+        if path.endswith("/languages") and name in languages:
+            return send_json(languages[name])
+        return send_json({"message": "Not Found"}, 404)
+
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         try:
-            if path == "/api/ok":
+            if path.startswith("/gh/"):
+                self._github(path)
+            elif path == "/api/ok":
                 self._send(200, b'{"ok":true}', "application/json")
             elif path == "/api/500":
                 self._send(500, b"error")

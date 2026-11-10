@@ -151,3 +151,34 @@ def test_default_paths_relative_to_script_dir():
         base / "apps.yaml", base / ".env", base / "reports")
     explicit = cli._parse_args(["--config", "x.yaml", "--env-file", "e", "--reports-dir", "r"])
     assert (explicit.config, explicit.env_file, explicit.reports_dir) == (Path("x.yaml"), Path("e"), Path("r"))
+
+
+def test_github_repos_checked_and_listed(tmp_path, site, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", f"{site}/gh")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    argv = ["--config", str(tmp_path / "brak.yaml"), "--github", "tomek", "--reports-dir", str(tmp_path / "r")]
+    assert main(argv, tmp_path) == 0
+    out = capsys.readouterr().out
+    assert "Repozytoria bez adresu aplikacji (1):" in out and "lib — Python 100%" in out
+    html = next((tmp_path / "r").glob("raport-*.html")).read_text(encoding="utf-8")
+    assert "GitHub: TypeScript 70%, CSS 30%" in html  # tabela zbiorcza
+    assert 'href="https://github.com/tomek/shop"' in html and "Sklep &lt;b&gt;internetowy&lt;/b&gt;" in html
+    assert "Next.js" in html  # docs (GitHub Pages) faktycznie sprawdzone w przeglądarce
+    assert "Repozytoria bez adresu aplikacji (1)" in html and "Biblioteka" in html
+
+
+def test_github_combined_with_config_and_name_collision(tmp_path, site, monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", f"{site}/gh")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    p = cfg(tmp_path, f"apps:\n  - {{name: shop, url: '{site}/ok.html'}}\n")
+    argv = ["--config", str(p), "--github", "tomek", "--reports-dir", str(tmp_path / "r")]
+    assert main(argv, tmp_path) == 0
+    html = next((tmp_path / "r").glob("raport-*.html")).read_text(encoding="utf-8")
+    assert "<td>shop</td>" in html and "<td>tomek/shop</td>" in html
+
+
+def test_github_error_exits_2(tmp_path, site, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", f"{site}/gh")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    assert main(["--github", "nikt", "--reports-dir", str(tmp_path / "r")], tmp_path) == 2
+    assert "Błąd GitHub: Nie znaleziono konta GitHub: nikt" in capsys.readouterr().err

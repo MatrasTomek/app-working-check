@@ -1,0 +1,152 @@
+"""Pobieranie listy repozytoriów konta GitHub (użytkownika lub organizacji) przez REST API.
+
+Dla każdego repozytorium: opis, języki z udziałem procentowym (liczone przez GitHub z kodu)
+oraz adres działającej aplikacji — pole „Website” albo GitHub Pages. Bez zależności spoza
+biblioteki standardowej.
+"""
+from __future__ import annotations
+
+import json
+import re
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from urllib.parse import quote
+
+DEFAULT_API_URL = "https://api.github.com"
+_TIMEOUT = 30
+
+
+class GitHubError(Exception):
+    """Błąd pobierania danych z GitHuba; komunikat po polsku, gotowy do pokazania użytkownikowi."""
+
+
+@dataclass
+class RepoInfo:
+    name: str
+    full_name: str
+    html_url: str
+    description: str | None = None
+    app_url: str | None = None
+    pushed_at: str | None = None  # RRRR-MM-DD
+    private: bool = False
+    languages: list[tuple[str, float]] = field(default_factory=list)  # (język, %), malejąco
+
+
+def format_languages(languages: list[tuple[str, float]], limit: int = 6) -> str:
+    shown = [f"{lang} {pct:.0f}%" for lang, pct in languages if pct >= 0.5][:limit]
+    return ", ".join(shown) or "—"
+
+
+class _Client:
+    def __init__(self, api_url: str, token: str | None):
+        self.api_url = api_url.rstrip("/")
+        self.token = token
+
+    def _open(self, url: str):
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "app-working-check",
+        }
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        try:
+            return urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=_TIMEOUT)
+        except urllib.error.HTTPError as e:
+            raise self._http_error(e) from None
+        except (urllib.error.URLError, OSError) as e:
+            reason = getattr(e, "reason", e)
+            raise GitHubError(f"Nie można połączyć się z GitHub API ({self.api_url}): {reason}") from None
+
+    def _http_error(self, e: urllib.error.HTTPError) -> GitHubError:
+        if e.code == 401:
+            return GitHubError("GitHub odrzucił GITHUB_TOKEN (HTTP 401) — sprawdź token w .env")
+        if e.code in (403, 429) and e.headers.get("X-RateLimit-Remaining") == "0":
+            hint = "" if self.token else " — dodaj GITHUB_TOKEN do .env (limit 5000 zapytań/h)"
+            return GitHubError(f"Przekroczono limit zapytań GitHub API{hint}")
+        return _StatusError(e.code, f"GitHub API: HTTP {e.code} dla {e.url}")
+
+    def get(self, path: str):
+        with self._open(f"{self.api_url}{path}") as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def get_all(self, path: str) -> list:
+        """Wszystkie strony listy (nagłówek Link: rel="next")."""
+        items: list = []
+        url: str | None = f"{self.api_url}{path}"
+        while url:
+            with self._open(url) as resp:
+                items += json.loads(resp.read().decode("utf-8"))
+                m = re.search(r'<([^>]+)>;\s*rel="next"', resp.headers.get("Link") or "")
+                url = m.group(1) if m else None
+        return items
+
+
+class _StatusError(GitHubError):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _list_path(client: _Client, account: str) -> str:
+    try:
+        owner = client.get(f"/users/{quote(account)}")
+    except _StatusError as e:
+        if e.status == 404:
+            raise GitHubError(f"Nie znaleziono konta GitHub: {account}") from None
+        raise
+    if client.token:
+        me = client.get("/user")
+        if str(me.get("login", "")).lower() == account.lower():
+            return "/user/repos?affiliation=owner&per_page=100"  # także prywatne
+        if owner.get("type") == "Organization":
+            return f"/orgs/{quote(account)}/repos?type=all&per_page=100"
+    return f"/users/{quote(account)}/repos?type=owner&per_page=100"
+
+
+def _app_url(client: _Client, repo: dict) -> str | None:
+    homepage = (repo.get("homepage") or "").strip()
+    if homepage:
+        return homepage if homepage.startswith(("http://", "https://")) else f"https://{homepage}"
+    if not repo.get("has_pages"):
+        return None
+    try:
+        pages = client.get(f"/repos/{repo['full_name']}/pages")
+        if pages.get("html_url"):
+            return pages["html_url"]
+    except _StatusError:
+        pass
+    owner = repo["full_name"].split("/", 1)[0].lower()
+    if repo["name"].lower() == f"{owner}.github.io":
+        return f"https://{owner}.github.io/"
+    return f"https://{owner}.github.io/{repo['name']}/"
+
+
+def _languages(client: _Client, full_name: str) -> list[tuple[str, float]]:
+    data = client.get(f"/repos/{full_name}/languages")
+    total = sum(data.values())
+    if not total:
+        return []
+    return sorted(((lang, n * 100 / total) for lang, n in data.items()), key=lambda x: -x[1])
+
+
+def fetch_repos(account: str, token: str | None = None, api_url: str = DEFAULT_API_URL) -> list[RepoInfo]:
+    """Repozytoria konta (bez forków i zarchiwizowanych), od ostatnio zmienianego."""
+    client = _Client(api_url, token)
+    raw = [r for r in client.get_all(_list_path(client, account))
+           if not r.get("fork") and not r.get("archived")]
+    raw.sort(key=lambda r: r.get("pushed_at") or "", reverse=True)
+    return [
+        RepoInfo(
+            name=r["name"],
+            full_name=r["full_name"],
+            html_url=r["html_url"],
+            description=r.get("description"),
+            app_url=_app_url(client, r),
+            pushed_at=(r.get("pushed_at") or "")[:10] or None,
+            private=bool(r.get("private")),
+            languages=_languages(client, r["full_name"]),
+        )
+        for r in raw
+    ]

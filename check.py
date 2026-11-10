@@ -11,7 +11,8 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from appcheck.browser_check import check_app
-from appcheck.config import ConfigError, load_config, load_env_file
+from appcheck.config import AppConfig, ConfigError, load_config, load_env_file
+from appcheck.github import DEFAULT_API_URL, GitHubError, RepoInfo, fetch_repos
 from appcheck.report import render_terminal, write_html
 from appcheck.result import Severity
 
@@ -28,6 +29,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="katalog raportów (domyślnie reports obok check.py)")
     parser.add_argument("--env-file", type=Path, default=BASE_DIR / ".env",
                         help="plik z danymi logowania (domyślnie .env obok check.py)")
+    parser.add_argument("--github", action="append", metavar="KONTO",
+                        help="dołącz repozytoria konta GitHub (użytkownika lub organizacji); można powtarzać")
     return parser.parse_args(argv)
 
 
@@ -51,13 +54,40 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         load_env_file(args.env_file)
-        apps = load_config(args.config, os.environ)
+        if args.github and not Path(args.config).exists():
+            apps = []  # z --github plik konfiguracji nie jest wymagany
+        else:
+            apps = load_config(args.config, os.environ)
     except ConfigError as e:
         print(f"Błąd konfiguracji: {e}", file=sys.stderr)
         return 2
 
+    repo_of: dict[str, RepoInfo] = {}
+    repos_without_url: list[RepoInfo] = []
+    for account in args.github or []:
+        print(f"Pobieram repozytoria GitHub: {account}…", flush=True)
+        try:
+            repos = fetch_repos(account, os.environ.get("GITHUB_TOKEN") or None,
+                                os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL)
+        except GitHubError as e:
+            print(f"Błąd GitHub: {e}", file=sys.stderr)
+            return 2
+        for repo in repos:
+            if repo.app_url is None:
+                repos_without_url.append(repo)
+                continue
+            name = repo.name
+            if any(a.name == name for a in apps):  # kolizja z apps.yaml lub innym kontem
+                name = repo.full_name
+            apps.append(AppConfig(name=name, url=repo.app_url))
+            repo_of[name] = repo
+    if args.github and not apps and not repos_without_url:
+        print("Brak repozytoriów do pokazania (pomijane są forki i repozytoria zarchiwizowane).",
+              file=sys.stderr)
+        return 2
+
     if args.only:
-        known = {a.name for a in apps}
+        known = {a.name for a in apps} | {r.name for r in repos_without_url}
         unknown = [n for n in args.only if n not in known]
         if unknown:
             print(
@@ -66,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         apps = [a for a in apps if a.name in args.only]
+        repos_without_url = [r for r in repos_without_url if r.name in args.only]
 
     started = datetime.now()
     stamp = started.strftime("%Y-%m-%d_%H-%M-%S")
@@ -92,16 +123,18 @@ def main(argv: list[str] | None = None) -> int:
         try:
             for app in apps:
                 print(f"Sprawdzam: {app.name} ({app.url})…", flush=True)
-                results.append(check_app(browser, app, screenshot_dir))
+                result = check_app(browser, app, screenshot_dir)
+                result.repo = repo_of.get(app.name)
+                results.append(result)
         finally:
             browser.close()
     finally:
         pw.stop()
 
     print()
-    print(render_terminal(results, color=sys.stdout.isatty()))
+    print(render_terminal(results, color=sys.stdout.isatty(), repos_without_url=repos_without_url))
     try:
-        write_html(results, report_path, started)
+        write_html(results, report_path, started, repos_without_url)
     except OSError as e:
         print(f"\nNie można zapisać raportu {report_path}: {e}", file=sys.stderr)
         return 2
