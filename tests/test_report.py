@@ -85,22 +85,25 @@ def test_html_shows_languages_and_technologies(tmp_path):
 
 
 def _repo_with_issues():
-    from appcheck.github import CiRun, IssueInfo, RepoInfo
+    from appcheck.github import IssueInfo, RepoInfo
     return RepoInfo("lib", "t/lib", "https://github.com/t/lib", languages=[("Python", 100.0)], details=True,
-                    ci=CiRun("in_progress", None, "CI", "https://github.com/t/lib/actions/runs/1", "2026-11-10"),
-                    ci_known=True,
+                    topics=["in-progress", "python"],
                     issues=[IssueInfo(7, "Błąd <logowania>", "https://github.com/t/lib/issues/7", "2026-11-09", "ala")])
 
 
-def test_html_repos_table_ci_issues_and_new_tab_links(tmp_path):
-    t = write_html([], tmp_path / "r.html", datetime.now(), [_repo_with_issues()]).read_text(encoding="utf-8")
-    assert "⏳ w toku" in t and "<th>CI</th>" in t and "<th>Issues</th>" in t
+def test_html_repos_table_status_issues_and_new_tab_links(tmp_path):
+    from appcheck.github import RepoInfo
+    other = RepoInfo("x", "t/x", "https://github.com/t/x", details=True, issues=[])
+    t = write_html([], tmp_path / "r.html", datetime.now(), [_repo_with_issues(), other]).read_text(encoding="utf-8")
+    assert "<th>Status</th>" in t and "<th>Tagi</th>" in t and "<td>🚧 w toku</td>" in t
+    assert '<span class="topic">python</span>' in t
+    assert "Statusy:</strong> 🚧 w toku: 1 · bez statusu: 1" in t
     assert 'data-target="issues-0">1 ▾</button>' in t and '<tr id="issues-0" class="issues-row" hidden>' in t
     assert "#7 Błąd &lt;logowania&gt;" in t
     links = t.count("<a href=")
     assert links == 3 and t.count('target="_blank" rel="noopener noreferrer"') == links
 
 
-def test_terminal_repos_ci_and_issues():
+def test_terminal_repos_status_and_issues():
     out = render_terminal([], color=False, repos_without_url=[_repo_with_issues()])
-    assert "lib — Python 100% · CI: ⏳ w toku · issues: 1" in out
+    assert "lib — Python 100% · status: 🚧 w toku · issues: 1" in out

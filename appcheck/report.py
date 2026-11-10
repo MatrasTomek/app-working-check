@@ -6,7 +6,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from appcheck.github import RepoInfo, ci_label, issues_label, repo_languages_text
+from appcheck.github import RepoInfo, issues_label, repo_languages_text, status_label
 from appcheck.result import AppResult, Severity
 
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
@@ -76,7 +76,7 @@ def render_terminal(results: list[AppResult], color: bool = True,
 
     if repos_without_url:
         out += ["", f"Repozytoria bez adresu aplikacji ({len(repos_without_url)}):"]
-        out += [f"  - {repo.name} — {repo_languages_text(repo)} · CI: {ci_label(repo)}"
+        out += [f"  - {repo.name} — {repo_languages_text(repo)} · status: {status_label(repo) or '—'}"
                 f" · issues: {issues_label(repo)}" for repo in repos_without_url]
 
     ok, warn, err = _counts(results)
@@ -100,6 +100,7 @@ a{color:inherit}
 .issues-toggle{font:inherit;cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:0 8px}
 tr.issues-row td{background:var(--card)}
 ul.issues{margin:4px 0;padding-left:20px}
+.topic{display:inline-block;font-size:12px;padding:0 8px;margin:1px 0;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
 """
 _SCRIPT = """<script>
 document.addEventListener('click', function (e) {
@@ -123,11 +124,16 @@ def _link(url: str, text: str) -> str:
     return f'<a href="{_e(url)}" target="_blank" rel="noopener noreferrer">{_e(text)}</a>'
 
 
-def _ci_html(repo: RepoInfo) -> str:
-    label = ci_label(repo)
-    if repo.ci is not None and repo.ci.html_url:
-        return _link(repo.ci.html_url, label) + f' <span class="muted">{_e(repo.ci.workflow)} · {_e(repo.ci.created_at)}</span>'
-    return _e(label)
+def _topics_html(repo: RepoInfo) -> str:
+    return " ".join(f'<span class="topic">{_e(t)}</span>' for t in repo.topics)
+
+
+def _status_summary(repos: list[RepoInfo]) -> str:
+    counts: dict[str, int] = {}
+    for repo in repos:
+        label = status_label(repo) or "bez statusu"
+        counts[label] = counts.get(label, 0) + 1
+    return " · ".join(f"{_e(label)}: {n}" for label, n in sorted(counts.items(), key=lambda x: -x[1]))
 
 
 def _issues_list(repo: RepoInfo) -> str:
@@ -149,13 +155,15 @@ def _app_section(r: AppResult) -> str:
             f"<p>Repozytorium: {_link(r.repo.html_url, r.repo.full_name)}"
             f"{' (prywatne)' if r.repo.private else ''}"
             f" · <strong>Języki wg GitHuba:</strong> {_e(repo_languages_text(r.repo))}"
-            f" · <strong>CI:</strong> {_ci_html(r.repo)}"
+            f" · <strong>Status:</strong> {_e(status_label(r.repo) or '—')}"
             f" · <strong>Issues:</strong> {_e(issues_label(r.repo))}</p>")
         if r.repo.issues:
             parts.append(f"<details><summary>Otwarte issues ({len(r.repo.issues)})</summary>"
                          f"{_issues_list(r.repo)}</details>")
         if r.repo.description:
             parts.append(f'<p class="muted">{_e(r.repo.description)}</p>')
+        if r.repo.topics:
+            parts.append(f"<p>Tagi: {_topics_html(r.repo)}</p>")
     if r.tech is not None:
         parts.append(
             f"<p><strong>Języki</strong> — frontend: {_e(', '.join(r.tech.frontend_languages))}; "
@@ -211,16 +219,18 @@ def _repos_table(repos: list[RepoInfo]) -> str:
             issues = _e(issues_label(repo))
         rows.append(
             f"<tr><td>{_link(repo.html_url, repo.name)}</td><td>{_e(repo.description or '')}</td>"
-            f"<td>{_e(repo_languages_text(repo))}</td><td>{_ci_html(repo)}</td><td>{issues}</td>"
+            f"<td>{_e(status_label(repo) or '—')}</td><td>{_topics_html(repo)}</td>"
+            f"<td>{_e(repo_languages_text(repo))}</td><td>{issues}</td>"
             f"<td>{_e(repo.pushed_at or '')}</td>"
             f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>")
         if repo.issues:
-            rows.append(f'<tr id="issues-{n}" class="issues-row" hidden><td colspan="7">'
+            rows.append(f'<tr id="issues-{n}" class="issues-row" hidden><td colspan="8">'
                         f"<strong>Otwarte issues — {_e(repo.name)}</strong>{_issues_list(repo)}</td></tr>")
     return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
             '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '
-            "nie ma czego sprawdzić w przeglądarce.</p>"
-            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Języki wg GitHuba</th><th>CI</th>"
+            "nie ma czego sprawdzić w przeglądarce. Status pochodzi z tagów (topics) repozytorium.</p>"
+            f"<p><strong>Statusy:</strong> {_status_summary(repos)}</p>"
+            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Status</th><th>Tagi</th><th>Języki wg GitHuba</th>"
             f"<th>Issues</th><th>Ostatnia zmiana</th><th>Widoczność</th></tr>{''.join(rows)}</table>")
 
 

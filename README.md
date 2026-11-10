@@ -140,10 +140,23 @@ Forki i repozytoria zarchiwizowane są pomijane.
   wykrywanie po stronie). Gdy nazwa repozytorium powtarza się z nazwą z `apps.yaml`, w raporcie
   występuje jako `konto/repozytorium`.
 - Repozytoria bez adresu trafiają do tabeli „Repozytoria bez adresu aplikacji” (nazwa, opis,
-  języki, CI, issues, data ostatniej zmiany, widoczność).
-- **CI** to ostatnie uruchomienie GitHub Actions na głównej gałęzi: ⏳ w toku / w kolejce, ✅ sukces,
-  ❌ błąd, ⏹ anulowano, „brak CI” (repozytorium nie ma workflow), „brak dostępu” (token bez
-  uprawnienia Actions). Kliknięcie otwiera to uruchomienie na GitHubie.
+  status, tagi, języki, issues, data ostatniej zmiany, widoczność), nad nią podsumowanie statusów.
+- **Status** projektu nadajesz ręcznie tagiem (topic) repozytorium: na stronie repozytorium ⚙ przy
+  „About” → „Topics”. Rozpoznawane tagi (polskie bez znaków diakrytycznych):
+
+  | status          | tagi |
+  |-----------------|------|
+  | 🚧 w toku       | `in-progress`, `wip`, `work-in-progress`, `in-development`, `development`, `w-toku`, `w-trakcie`, `w-realizacji` |
+  | 📝 planowane    | `planned`, `todo`, `idea`, `planowane`, `pomysl`, `do-zrobienia` |
+  | 🧪 prototyp     | `prototype`, `poc`, `proof-of-concept`, `prototyp`, `demo` |
+  | 🟢 produkcja    | `production`, `live`, `produkcja`, `wdrozone` |
+  | 🟢 aktywne      | `active`, `maintained`, `aktywne`, `utrzymywane` |
+  | ✅ gotowe       | `done`, `completed`, `finished`, `gotowe`, `zakonczone`, `skonczone` |
+  | ⏸ wstrzymane    | `paused`, `on-hold`, `wstrzymane` |
+  | ⛔ porzucone    | `deprecated`, `abandoned`, `unmaintained`, `porzucone`, `nieaktywne` |
+
+  Własny status: tag `status-<nazwa>`, np. `status-do-testow` → „do testow”. Pozostałe tagi
+  (np. `react`) są pokazywane w kolumnie „Tagi”. Repozytorium bez tagu statusu ma „—”.
 - **Issues** to liczba otwartych zgłoszeń (bez pull requestów); kliknięcie liczby rozwija pod
   wierszem listę zgłoszeń z linkami. „wyłączone” — repozytorium ma wyłączone issues.
 - Wszystkie linki w raporcie otwierają się w nowej karcie.
@@ -163,8 +176,8 @@ GITHUB_TOKEN=github_pat_...
 
 Token utworzysz na GitHubie: Settings → Developer settings → Personal access tokens →
 Fine-grained tokens → Generate new token; „Repository access”: All repositories; uprawnienia
-„Repository permissions” (wszystkie **Read-only**): **Metadata** (dodawane automatycznie), **Pages**,
-**Actions** i **Issues**. Uprawnienia istniejącego tokenu zmienisz na tej samej stronie (Edit) —
+„Repository permissions” (wszystkie **Read-only**): **Metadata** (dodawane automatycznie), **Pages**
+i **Issues**. Uprawnienia istniejącego tokenu zmienisz na tej samej stronie (Edit) —
 token pozostaje ten sam.
 Błąd GitHuba (nieznane konto, zły token, przekroczony limit, brak połączenia) kończy skrypt
 kodem `2`.

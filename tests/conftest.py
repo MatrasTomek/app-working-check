@@ -43,12 +43,12 @@ class _Handler(SimpleHTTPRequestHandler):
 
         page1 = [
             repo("shop", homepage=f"{base}/ok.html", description="Sklep <b>internetowy</b>",
-                 pushed_at="2026-11-01T10:00:00Z"),
+                 pushed_at="2026-11-01T10:00:00Z", topics=["in-progress", "react"]),
             repo("docs", has_pages=True, has_issues=False, pushed_at="2026-10-01T10:00:00Z"),
             repo("old", archived=True),
             repo("forked", fork=True),
         ]
-        page2 = [repo("lib", description="Biblioteka")]
+        page2 = [repo("lib", description="Biblioteka", topics=["python", "status-do-testow"])]
         languages = {"shop": {"TypeScript": 700, "CSS": 300}, "docs": {"HTML": 10},
                      "lib": {"Python": 1000}, "secret": {"Go": 5}}
 
@@ -68,22 +68,14 @@ class _Handler(SimpleHTTPRequestHandler):
                 extra = [repo("secret", private=True)] if path == "/gh/user/repos" else []
                 return send_json(page2 + extra)
             return send_json(page1, headers={"Link": f'<{base}{path}?page=2>; rel="next"'})
-        def run(status, conclusion=None):
-            return {"total_count": 1, "workflow_runs": [{
-                "status": status, "conclusion": conclusion, "name": "CI",
-                "html_url": "https://github.com/tomek/x/actions/runs/1", "created_at": "2026-11-10T08:00:00Z"}]}
-
         def issue(n, **kw):
             return {"number": n, "title": f"Zgłoszenie <{n}>", "html_url": f"https://github.com/tomek/shop/issues/{n}",
                     "created_at": "2026-11-0{}T00:00:00Z".format(n), "user": {"login": "ala"}, **kw}
 
-        runs = {"shop": run("in_progress"), "lib": run("completed", "failure"),
-                "docs": {"total_count": 0, "workflow_runs": []}}
         issues = {"shop": [issue(1), issue(2, pull_request={"url": "x"}), issue(3)], "lib": []}
-        if path.startswith("/gh/repos/tomek/") and path.endswith(("/actions/runs", "/issues")):
-            name = path.split("/")[4]
-            data = (runs if path.endswith("/actions/runs") else issues).get(name)
-            if data is None:  # „secret”: token bez uprawnień Actions/Issues
+        if path.startswith("/gh/repos/tomek/") and path.endswith("/issues"):
+            data = issues.get(path.split("/")[4])
+            if data is None:  # „secret”: token bez uprawnienia Issues
                 return send_json({"message": "Resource not accessible by personal access token"}, 403,
                                  {"X-RateLimit-Remaining": "4999"})
             return send_json(data)

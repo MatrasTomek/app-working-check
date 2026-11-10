@@ -23,16 +23,6 @@ class GitHubError(Exception):
 
 
 @dataclass
-class CiRun:
-    """Ostatnie uruchomienie GitHub Actions na głównej gałęzi."""
-    status: str  # queued / in_progress / completed / …
-    conclusion: str | None  # success / failure / cancelled / … (gdy completed)
-    workflow: str
-    html_url: str
-    created_at: str  # RRRR-MM-DD
-
-
-@dataclass
 class IssueInfo:
     number: int
     title: str
@@ -52,9 +42,8 @@ class RepoInfo:
     private: bool = False
     languages: list[tuple[str, float]] = field(default_factory=list)  # (język, %), malejąco
     main_language: str | None = None  # główny język z listy repozytoriów (bez dodatkowych zapytań)
-    details: bool = False  # czy pobrano CI i issues (False — limit zapytań)
-    ci: CiRun | None = None  # None — brak uruchomień CI albo brak dostępu (patrz ci_known)
-    ci_known: bool = False  # False — nie udało się sprawdzić (brak uprawnienia Actions w tokenie)
+    topics: list[str] = field(default_factory=list)  # tagi repozytorium (About → Topics)
+    details: bool = False  # czy pobrano issues (False — limit zapytań)
     issues_enabled: bool = True
     issues: list[IssueInfo] | None = None  # None — brak dostępu (uprawnienie Issues w tokenie)
 
@@ -64,31 +53,30 @@ def format_languages(languages: list[tuple[str, float]], limit: int = 6) -> str:
     return ", ".join(shown) or "—"
 
 
-_CI_LABELS = {
-    "success": "✅ sukces",
-    "failure": "❌ błąd",
-    "timed_out": "❌ przekroczony czas",
-    "startup_failure": "❌ błąd uruchomienia",
-    "cancelled": "⏹ anulowano",
-    "action_required": "⚠️ wymaga akcji",
-    "skipped": "— pominięto",
-    "neutral": "— neutralny",
-    "stale": "— nieaktualny",
+# tagi (topics) oznaczające status projektu → etykieta; dodatkowo dowolny tag „status-…”
+_STATUS_TOPICS = {
+    "🚧 w toku": ("in-progress", "wip", "work-in-progress", "in-development", "development",
+                  "w-toku", "w-trakcie", "w-realizacji"),
+    "📝 planowane": ("planned", "todo", "idea", "planowane", "pomysl", "do-zrobienia"),
+    "🧪 prototyp": ("prototype", "poc", "proof-of-concept", "prototyp", "demo"),
+    "🟢 produkcja": ("production", "live", "produkcja", "wdrozone"),
+    "🟢 aktywne": ("active", "maintained", "aktywne", "utrzymywane"),
+    "✅ gotowe": ("done", "completed", "finished", "gotowe", "zakonczone", "skonczone"),
+    "⏸ wstrzymane": ("paused", "on-hold", "wstrzymane"),
+    "⛔ porzucone": ("deprecated", "abandoned", "unmaintained", "porzucone", "nieaktywne"),
 }
-_CI_PENDING = {"queued": "⏳ w kolejce", "in_progress": "⏳ w toku", "waiting": "⏳ czeka",
-               "requested": "⏳ w kolejce", "pending": "⏳ w kolejce"}
+_TOPIC_TO_STATUS = {t: label for label, topics in _STATUS_TOPICS.items() for t in topics}
 
 
-def ci_label(repo: RepoInfo) -> str:
-    if not repo.details:
-        return "—"
-    if not repo.ci_known:
-        return "brak dostępu"
-    if repo.ci is None:
-        return "brak CI"
-    if repo.ci.status != "completed":
-        return _CI_PENDING.get(repo.ci.status, f"⏳ {repo.ci.status}")
-    return _CI_LABELS.get(repo.ci.conclusion or "", repo.ci.conclusion or "zakończono")
+def status_label(repo: RepoInfo) -> str | None:
+    """Status projektu z tagów repozytorium; None — repozytorium nie ma tagu statusu."""
+    labels = []
+    for topic in repo.topics:
+        if topic in _TOPIC_TO_STATUS:
+            labels.append(_TOPIC_TO_STATUS[topic])
+        elif topic.startswith("status-") and len(topic) > len("status-"):
+            labels.append(topic.removeprefix("status-").replace("-", " "))
+    return ", ".join(dict.fromkeys(labels)) or None
 
 
 def issues_label(repo: RepoInfo) -> str:
@@ -208,26 +196,6 @@ def _languages(client: _Client, full_name: str) -> list[tuple[str, float]]:
     return sorted(((lang, n * 100 / total) for lang, n in data.items()), key=lambda x: -x[1])
 
 
-def _ci(client: _Client, repo: dict) -> tuple[CiRun | None, bool]:
-    """(ostatnie uruchomienie CI, czy udało się sprawdzić)."""
-    branch = quote(repo.get("default_branch") or "main")
-    try:
-        data = client.get(f"/repos/{repo['full_name']}/actions/runs?per_page=1&branch={branch}")
-    except _StatusError:
-        return None, False
-    runs = data.get("workflow_runs") or []
-    if not runs:
-        return None, True
-    run = runs[0]
-    return CiRun(
-        status=run.get("status") or "",
-        conclusion=run.get("conclusion"),
-        workflow=run.get("name") or run.get("display_title") or "",
-        html_url=run.get("html_url") or "",
-        created_at=(run.get("created_at") or "")[:10],
-    ), True
-
-
 def _issues(client: _Client, repo: dict) -> list[IssueInfo] | None:
     try:
         items = client.get_all(f"/repos/{repo['full_name']}/issues?state=open&per_page=100")
@@ -260,20 +228,19 @@ def fetch_repos(account: str, token: str | None = None, api_url: str = DEFAULT_A
     repos = []
     for r in raw:
         languages: list[tuple[str, float]] = []
-        ci, ci_known, issues = None, False, None
+        issues = None
         issues_enabled = r.get("has_issues", True)
         try:
             app_url = _app_url(client, r, details)
             if details:
                 languages = _languages(client, r["full_name"])
-                ci, ci_known = _ci(client, r)
                 issues = _issues(client, r) if issues_enabled else []
         except _RateLimitError as e:
             if details and on_warning:
                 on_warning(f"{e}; dla pozostałych repozytoriów pokazano tylko główny język")
             details = False
             app_url = _app_url(client, r, details)
-            languages, ci, ci_known, issues = [], None, False, None
+            languages, issues = [], None
         repos.append(RepoInfo(
             name=r["name"],
             full_name=r["full_name"],
@@ -284,9 +251,8 @@ def fetch_repos(account: str, token: str | None = None, api_url: str = DEFAULT_A
             private=bool(r.get("private")),
             languages=languages,
             main_language=r.get("language"),
+            topics=list(r.get("topics") or []),
             details=details,
-            ci=ci,
-            ci_known=ci_known,
             issues_enabled=issues_enabled,
             issues=issues,
         ))
