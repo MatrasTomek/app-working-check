@@ -151,7 +151,8 @@ def test_detects_backend_from_headers_and_cookies(browser, site, tmp_path):
     assert r.tech.backend_languages == ["PHP"]
     found = {t.name: t for t in r.tech.technologies}
     assert found["PHP"].version == "8.2.1" and found["nginx"].version == "1.25.3"
-    assert any(t.evidence == "ciasteczko PHPSESSID" for t in r.tech.technologies)
+    assert "nagłówek X-Powered-By: PHP/8.2.1" in found["PHP"].evidence
+    assert "ciasteczko PHPSESSID" in found["PHP"].evidence
 
 
 def test_detects_frontend_frameworks(browser, site, tmp_path):

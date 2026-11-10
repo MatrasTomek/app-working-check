@@ -86,5 +86,6 @@ def test_blazor_adds_csharp_frontend():
 def test_duplicates_merged_and_version_kept():
     p = detect({"x-powered-by": "PHP"}, ["PHPSESSID"], {}, [])
     assert [t.name for t in p.technologies] == ["PHP"]
+    assert p.technologies[0].evidence == "nagłówek X-Powered-By: PHP; ciasteczko PHPSESSID"
     p = detect({"x-powered-by": "PHP", "x-generator": "Drupal 10"}, ["PHPSESSID"], {}, [])
     assert p.backend_languages == ["PHP"]

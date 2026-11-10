@@ -241,15 +241,18 @@ def _from_resources(resource_urls: Iterable[str]) -> tuple[list[Technology], boo
 
 
 def _dedupe(techs: list[Technology]) -> list[Technology]:
-    """Jedna pozycja na (nazwę, warstwę); wygrywa pierwsza, ale wersja jest uzupełniana."""
+    """Jedna pozycja na (nazwę, warstwę): dowody są łączone, wersja — pierwsza znana."""
     merged: dict[tuple[str, str], Technology] = {}
     for t in techs:
         key = (t.name, t.side)
         prev = merged.get(key)
         if prev is None:
             merged[key] = t
-        elif prev.version is None and t.version:
-            merged[key] = Technology(prev.name, prev.side, prev.language, prev.evidence, t.version)
+            continue
+        evidence = prev.evidence
+        if t.evidence not in evidence.split("; "):
+            evidence = f"{evidence}; {t.evidence}"
+        merged[key] = Technology(prev.name, prev.side, prev.language, evidence, prev.version or t.version)
     return list(merged.values())
 
 
