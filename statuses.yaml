@@ -15,6 +15,10 @@ statuses:
     label: Test na produkcji
     color: "#8250df"
 
+  - tag: end-of-prod
+    label: Wycofane z produkcji
+    color: "#bc4c00"
+
   - tag: production
     label: Produkcja
     color: "#1a7f37"
@@ -26,6 +30,10 @@ statuses:
   - tag: idea
     label: Pomysł
     color: "#bf3989"
+
+  - tag: learning
+    label: Nauka
+    color: "#1b7c83"
 
   - tag: done
     label: Gotowe
