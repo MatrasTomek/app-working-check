@@ -6,7 +6,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from appcheck.github import RepoInfo, repo_languages_text
+from appcheck.github import RepoInfo, ci_label, issues_label, repo_languages_text
 from appcheck.result import AppResult, Severity
 
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
@@ -76,7 +76,8 @@ def render_terminal(results: list[AppResult], color: bool = True,
 
     if repos_without_url:
         out += ["", f"Repozytoria bez adresu aplikacji ({len(repos_without_url)}):"]
-        out += [f"  - {repo.name} — {repo_languages_text(repo)}" for repo in repos_without_url]
+        out += [f"  - {repo.name} — {repo_languages_text(repo)} · CI: {ci_label(repo)}"
+                f" · issues: {issues_label(repo)}" for repo in repos_without_url]
 
     ok, warn, err = _counts(results)
     out += ["", f"Razem: {ok} OK, {warn} ostrzeżeń, {err} błędów"]
@@ -95,12 +96,46 @@ section.app{background:var(--card);border:1px solid var(--line);border-radius:8p
 pre{white-space:pre-wrap;word-break:break-word;margin:4px 0}
 img{max-width:100%;border:1px solid var(--line)}
 summary{cursor:pointer;margin:8px 0}
+a{color:inherit}
+.issues-toggle{font:inherit;cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:0 8px}
+tr.issues-row td{background:var(--card)}
+ul.issues{margin:4px 0;padding-left:20px}
 """
+_SCRIPT = """<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.issues-toggle');
+  if (!b) return;
+  var row = document.getElementById(b.dataset.target);
+  row.hidden = !row.hidden;
+  b.setAttribute('aria-expanded', String(!row.hidden));
+  b.textContent = b.textContent.replace(/[▾▴]/, row.hidden ? '▾' : '▴');
+});
+</script>"""
 _CLASS = {Severity.OK: "s-ok", Severity.WARNING: "s-warn", Severity.ERROR: "s-err"}
 
 
 def _e(text: object) -> str:
     return html.escape(str(text))
+
+
+def _link(url: str, text: str) -> str:
+    """Link otwierany w nowej karcie."""
+    return f'<a href="{_e(url)}" target="_blank" rel="noopener noreferrer">{_e(text)}</a>'
+
+
+def _ci_html(repo: RepoInfo) -> str:
+    label = ci_label(repo)
+    if repo.ci is not None and repo.ci.html_url:
+        return _link(repo.ci.html_url, label) + f' <span class="muted">{_e(repo.ci.workflow)} · {_e(repo.ci.created_at)}</span>'
+    return _e(label)
+
+
+def _issues_list(repo: RepoInfo) -> str:
+    items = "".join(
+        f"<li>{_link(i.html_url, f'#{i.number} {i.title}')} "
+        f'<span class="muted">{_e(i.created_at)}{" · " + _e(i.author) if i.author else ""}</span></li>'
+        for i in repo.issues or [])
+    return f'<ul class="issues">{items}</ul>'
 
 
 def _app_section(r: AppResult) -> str:
@@ -111,9 +146,14 @@ def _app_section(r: AppResult) -> str:
     ]
     if r.repo is not None:
         parts.append(
-            f'<p>Repozytorium: <a href="{_e(r.repo.html_url)}">{_e(r.repo.full_name)}</a>'
+            f"<p>Repozytorium: {_link(r.repo.html_url, r.repo.full_name)}"
             f"{' (prywatne)' if r.repo.private else ''}"
-            f" · <strong>Języki wg GitHuba:</strong> {_e(repo_languages_text(r.repo))}</p>")
+            f" · <strong>Języki wg GitHuba:</strong> {_e(repo_languages_text(r.repo))}"
+            f" · <strong>CI:</strong> {_ci_html(r.repo)}"
+            f" · <strong>Issues:</strong> {_e(issues_label(r.repo))}</p>")
+        if r.repo.issues:
+            parts.append(f"<details><summary>Otwarte issues ({len(r.repo.issues)})</summary>"
+                         f"{_issues_list(r.repo)}</details>")
         if r.repo.description:
             parts.append(f'<p class="muted">{_e(r.repo.description)}</p>')
     if r.tech is not None:
@@ -162,15 +202,26 @@ def _app_section(r: AppResult) -> str:
 def _repos_table(repos: list[RepoInfo]) -> str:
     if not repos:
         return ""
-    rows = "".join(
-        f'<tr><td><a href="{_e(repo.html_url)}">{_e(repo.name)}</a></td><td>{_e(repo.description or "")}</td>'
-        f"<td>{_e(repo_languages_text(repo))}</td><td>{_e(repo.pushed_at or '')}</td>"
-        f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>" for repo in repos)
+    rows = []
+    for n, repo in enumerate(repos):
+        if repo.issues:
+            issues = (f'<button type="button" class="issues-toggle" aria-expanded="false" '
+                      f'data-target="issues-{n}">{len(repo.issues)} ▾</button>')
+        else:
+            issues = _e(issues_label(repo))
+        rows.append(
+            f"<tr><td>{_link(repo.html_url, repo.name)}</td><td>{_e(repo.description or '')}</td>"
+            f"<td>{_e(repo_languages_text(repo))}</td><td>{_ci_html(repo)}</td><td>{issues}</td>"
+            f"<td>{_e(repo.pushed_at or '')}</td>"
+            f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>")
+        if repo.issues:
+            rows.append(f'<tr id="issues-{n}" class="issues-row" hidden><td colspan="7">'
+                        f"<strong>Otwarte issues — {_e(repo.name)}</strong>{_issues_list(repo)}</td></tr>")
     return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
             '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '
             "nie ma czego sprawdzić w przeglądarce.</p>"
-            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Języki wg GitHuba</th>"
-            f"<th>Ostatnia zmiana</th><th>Widoczność</th></tr>{rows}</table>")
+            "<table><tr><th>Repozytorium</th><th>Opis</th><th>Języki wg GitHuba</th><th>CI</th>"
+            f"<th>Issues</th><th>Ostatnia zmiana</th><th>Widoczność</th></tr>{''.join(rows)}</table>")
 
 
 def write_html(results: list[AppResult], path: Path, started_at: datetime,
@@ -191,7 +242,7 @@ def write_html(results: list[AppResult], path: Path, started_at: datetime,
         f"{rows}</table>"
         + "".join(_app_section(r) for r in results)
         + _repos_table(list(repos_without_url))
-        + "</body></html>\n"
+        + _SCRIPT + "</body></html>\n"
     )
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

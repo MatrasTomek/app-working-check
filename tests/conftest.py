@@ -38,12 +38,13 @@ class _Handler(SimpleHTTPRequestHandler):
             kw.setdefault("language", {"shop": "TypeScript", "lib": "Python"}.get(name))
             return {"name": name, "full_name": f"tomek/{name}", "html_url": f"https://github.com/tomek/{name}",
                     "description": None, "homepage": None, "has_pages": False, "fork": False,
-                    "archived": False, "private": False, "pushed_at": "2026-01-01T00:00:00Z", **kw}
+                    "archived": False, "private": False, "pushed_at": "2026-01-01T00:00:00Z",
+                    "default_branch": "main", "has_issues": True, **kw}
 
         page1 = [
             repo("shop", homepage=f"{base}/ok.html", description="Sklep <b>internetowy</b>",
                  pushed_at="2026-11-01T10:00:00Z"),
-            repo("docs", has_pages=True, pushed_at="2026-10-01T10:00:00Z"),
+            repo("docs", has_pages=True, has_issues=False, pushed_at="2026-10-01T10:00:00Z"),
             repo("old", archived=True),
             repo("forked", fork=True),
         ]
@@ -67,6 +68,25 @@ class _Handler(SimpleHTTPRequestHandler):
                 extra = [repo("secret", private=True)] if path == "/gh/user/repos" else []
                 return send_json(page2 + extra)
             return send_json(page1, headers={"Link": f'<{base}{path}?page=2>; rel="next"'})
+        def run(status, conclusion=None):
+            return {"total_count": 1, "workflow_runs": [{
+                "status": status, "conclusion": conclusion, "name": "CI",
+                "html_url": "https://github.com/tomek/x/actions/runs/1", "created_at": "2026-11-10T08:00:00Z"}]}
+
+        def issue(n, **kw):
+            return {"number": n, "title": f"Zgłoszenie <{n}>", "html_url": f"https://github.com/tomek/shop/issues/{n}",
+                    "created_at": "2026-11-0{}T00:00:00Z".format(n), "user": {"login": "ala"}, **kw}
+
+        runs = {"shop": run("in_progress"), "lib": run("completed", "failure"),
+                "docs": {"total_count": 0, "workflow_runs": []}}
+        issues = {"shop": [issue(1), issue(2, pull_request={"url": "x"}), issue(3)], "lib": []}
+        if path.startswith("/gh/repos/tomek/") and path.endswith(("/actions/runs", "/issues")):
+            name = path.split("/")[4]
+            data = (runs if path.endswith("/actions/runs") else issues).get(name)
+            if data is None:  # „secret”: token bez uprawnień Actions/Issues
+                return send_json({"message": "Resource not accessible by personal access token"}, 403,
+                                 {"X-RateLimit-Remaining": "4999"})
+            return send_json(data)
         if path == "/gh/repos/tomek/docs/pages":
             return send_json({"html_url": f"{base}/tech-next.html"})
         name = path.removeprefix("/gh/repos/tomek/").removesuffix("/languages")

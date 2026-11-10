@@ -82,3 +82,25 @@ def test_html_shows_languages_and_technologies(tmp_path):
     assert "frontend: HTML, CSS, JavaScript; backend: PHP" in t
     assert "Technologie (1)" in t and "nagłówek X-Powered-By: PHP/8.2" in t
     assert "backend: nie rozpoznano" in t
+
+
+def _repo_with_issues():
+    from appcheck.github import CiRun, IssueInfo, RepoInfo
+    return RepoInfo("lib", "t/lib", "https://github.com/t/lib", languages=[("Python", 100.0)], details=True,
+                    ci=CiRun("in_progress", None, "CI", "https://github.com/t/lib/actions/runs/1", "2026-11-10"),
+                    ci_known=True,
+                    issues=[IssueInfo(7, "Błąd <logowania>", "https://github.com/t/lib/issues/7", "2026-11-09", "ala")])
+
+
+def test_html_repos_table_ci_issues_and_new_tab_links(tmp_path):
+    t = write_html([], tmp_path / "r.html", datetime.now(), [_repo_with_issues()]).read_text(encoding="utf-8")
+    assert "⏳ w toku" in t and "<th>CI</th>" in t and "<th>Issues</th>" in t
+    assert 'data-target="issues-0">1 ▾</button>' in t and '<tr id="issues-0" class="issues-row" hidden>' in t
+    assert "#7 Błąd &lt;logowania&gt;" in t
+    links = t.count("<a href=")
+    assert links == 3 and t.count('target="_blank" rel="noopener noreferrer"') == links
+
+
+def test_terminal_repos_ci_and_issues():
+    out = render_terminal([], color=False, repos_without_url=[_repo_with_issues()])
+    assert "lib — Python 100% · CI: ⏳ w toku · issues: 1" in out

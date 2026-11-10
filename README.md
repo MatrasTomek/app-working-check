@@ -140,7 +140,13 @@ Forki i repozytoria zarchiwizowane są pomijane.
   wykrywanie po stronie). Gdy nazwa repozytorium powtarza się z nazwą z `apps.yaml`, w raporcie
   występuje jako `konto/repozytorium`.
 - Repozytoria bez adresu trafiają do tabeli „Repozytoria bez adresu aplikacji” (nazwa, opis,
-  języki, data ostatniej zmiany, widoczność).
+  języki, CI, issues, data ostatniej zmiany, widoczność).
+- **CI** to ostatnie uruchomienie GitHub Actions na głównej gałęzi: ⏳ w toku / w kolejce, ✅ sukces,
+  ❌ błąd, ⏹ anulowano, „brak CI” (repozytorium nie ma workflow), „brak dostępu” (token bez
+  uprawnienia Actions). Kliknięcie otwiera to uruchomienie na GitHubie.
+- **Issues** to liczba otwartych zgłoszeń (bez pull requestów); kliknięcie liczby rozwija pod
+  wierszem listę zgłoszeń z linkami. „wyłączone” — repozytorium ma wyłączone issues.
+- Wszystkie linki w raporcie otwierają się w nowej karcie.
 - `--only "nazwa"` działa także dla repozytoriów.
 
 Bez tokenu widać tylko repozytoria publiczne, a GitHub pozwala na 60 zapytań na godzinę (ok. 50
@@ -157,7 +163,9 @@ GITHUB_TOKEN=github_pat_...
 
 Token utworzysz na GitHubie: Settings → Developer settings → Personal access tokens →
 Fine-grained tokens → Generate new token; „Repository access”: All repositories; uprawnienia
-„Repository permissions”: **Metadata — Read-only** (dodawane automatycznie) i **Pages — Read-only**.
+„Repository permissions” (wszystkie **Read-only**): **Metadata** (dodawane automatycznie), **Pages**,
+**Actions** i **Issues**. Uprawnienia istniejącego tokenu zmienisz na tej samej stronie (Edit) —
+token pozostaje ten sam.
 Błąd GitHuba (nieznane konto, zły token, przekroczony limit, brak połączenia) kończy skrypt
 kodem `2`.
 

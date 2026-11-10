@@ -70,3 +70,15 @@ def test_rate_limit_during_details_gives_partial_data(site, monkeypatch):
     assert by_name["docs"].app_url is not None
     assert repo_languages_text(by_name["lib"]) == "Python (główny)"
     assert repo_languages_text(by_name["docs"]) == "—"
+
+
+def test_ci_status_and_issues(site):
+    from appcheck.github import ci_label, issues_label
+
+    by_name = {r.name: r for r in fetch_repos("tomek", token="dobry", api_url=f"{site}/gh")}
+    shop, lib, docs, secret = by_name["shop"], by_name["lib"], by_name["docs"], by_name["secret"]
+    assert ci_label(shop) == "⏳ w toku" and ci_label(lib) == "❌ błąd" and ci_label(docs) == "brak CI"
+    assert ci_label(secret) == "brak dostępu" and issues_label(secret) == "brak dostępu"
+    assert [i.number for i in shop.issues] == [1, 3]  # bez pull requestów
+    assert shop.issues[0].title == "Zgłoszenie <1>" and shop.issues[0].author == "ala"
+    assert issues_label(shop) == "2" and issues_label(lib) == "0" and issues_label(docs) == "wyłączone"
