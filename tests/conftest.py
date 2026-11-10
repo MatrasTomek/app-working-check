@@ -35,6 +35,7 @@ class _Handler(SimpleHTTPRequestHandler):
         auth = self.headers.get("Authorization")
 
         def repo(name, **kw):
+            kw.setdefault("language", {"shop": "TypeScript", "lib": "Python"}.get(name))
             return {"name": name, "full_name": f"tomek/{name}", "html_url": f"https://github.com/tomek/{name}",
                     "description": None, "homepage": None, "has_pages": False, "fork": False,
                     "archived": False, "private": False, "pushed_at": "2026-01-01T00:00:00Z", **kw}
@@ -69,6 +70,8 @@ class _Handler(SimpleHTTPRequestHandler):
         if path == "/gh/repos/tomek/docs/pages":
             return send_json({"html_url": f"{base}/tech-next.html"})
         name = path.removeprefix("/gh/repos/tomek/").removesuffix("/languages")
+        if path.endswith("/languages") and self.headers.get("X-Test-Limit-Languages"):
+            return send_json({"message": "rate limit"}, 403, {"X-RateLimit-Remaining": "0"})
         if path.endswith("/languages") and name in languages:
             return send_json(languages[name])
         return send_json({"message": "Not Found"}, 404)

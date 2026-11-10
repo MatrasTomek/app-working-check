@@ -6,7 +6,7 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from appcheck.github import RepoInfo, format_languages
+from appcheck.github import RepoInfo, repo_languages_text
 from appcheck.result import AppResult, Severity
 
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
@@ -32,8 +32,8 @@ def _backend_text(result: AppResult) -> str:
 
 
 def _languages_text(result: AppResult) -> str:
-    if result.repo is not None and result.repo.languages:
-        return f"GitHub: {format_languages(result.repo.languages)}"
+    if result.repo is not None and (result.repo.languages or result.repo.main_language):
+        return f"GitHub: {repo_languages_text(result.repo)}"
     if result.tech is None:
         return "—"
     return (f"frontend: {', '.join(result.tech.frontend_languages)}; "
@@ -76,7 +76,7 @@ def render_terminal(results: list[AppResult], color: bool = True,
 
     if repos_without_url:
         out += ["", f"Repozytoria bez adresu aplikacji ({len(repos_without_url)}):"]
-        out += [f"  - {repo.name} — {format_languages(repo.languages)}" for repo in repos_without_url]
+        out += [f"  - {repo.name} — {repo_languages_text(repo)}" for repo in repos_without_url]
 
     ok, warn, err = _counts(results)
     out += ["", f"Razem: {ok} OK, {warn} ostrzeżeń, {err} błędów"]
@@ -113,7 +113,7 @@ def _app_section(r: AppResult) -> str:
         parts.append(
             f'<p>Repozytorium: <a href="{_e(r.repo.html_url)}">{_e(r.repo.full_name)}</a>'
             f"{' (prywatne)' if r.repo.private else ''}"
-            f" · <strong>Języki wg GitHuba:</strong> {_e(format_languages(r.repo.languages))}</p>")
+            f" · <strong>Języki wg GitHuba:</strong> {_e(repo_languages_text(r.repo))}</p>")
         if r.repo.description:
             parts.append(f'<p class="muted">{_e(r.repo.description)}</p>')
     if r.tech is not None:
@@ -164,7 +164,7 @@ def _repos_table(repos: list[RepoInfo]) -> str:
         return ""
     rows = "".join(
         f'<tr><td><a href="{_e(repo.html_url)}">{_e(repo.name)}</a></td><td>{_e(repo.description or "")}</td>'
-        f"<td>{_e(format_languages(repo.languages))}</td><td>{_e(repo.pushed_at or '')}</td>"
+        f"<td>{_e(repo_languages_text(repo))}</td><td>{_e(repo.pushed_at or '')}</td>"
         f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>" for repo in repos)
     return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
             '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '

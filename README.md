@@ -145,7 +145,11 @@ Forki i repozytoria zarchiwizowane są pomijane.
 
 Bez tokenu widać tylko repozytoria publiczne, a GitHub pozwala na 60 zapytań na godzinę (ok. 50
 repozytoriów na uruchomienie). Z tokenem w `.env` widać też prywatne repozytoria (własne i organizacji,
-do których należysz), a limit to 5000 zapytań na godzinę:
+do których należysz), a limit to 5000 zapytań na godzinę. Gdy limit skończy się w trakcie pobierania
+szczegółów, skrypt nie przerywa pracy: dla pozostałych repozytoriów pokazuje tylko główny język
+(„TypeScript (główny)”) i wypisuje ostrzeżenie.
+
+Token dodajesz do `.env`:
 
 ```
 GITHUB_TOKEN=github_pat_...

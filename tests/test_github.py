@@ -1,6 +1,6 @@
 import pytest
 
-from appcheck.github import GitHubError, fetch_repos, format_languages
+from appcheck.github import GitHubError, fetch_repos, format_languages, repo_languages_text
 
 
 def test_lists_repos_with_languages_and_urls(site):
@@ -44,3 +44,29 @@ def test_no_connection(dead_url):
 def test_format_languages():
     assert format_languages([("TypeScript", 70.4), ("CSS", 29.3), ("Shell", 0.3)]) == "TypeScript 70%, CSS 29%"
     assert format_languages([]) == "—"
+
+
+def test_rate_limit_during_details_gives_partial_data(site, monkeypatch):
+    import appcheck.github as gh
+
+    real_open = gh._Client._open
+
+    def limited_open(self, url):  # serwer odmawia zapytań o języki
+        if url.endswith("/languages"):
+            req = gh.urllib.request.Request(url, headers={"X-Test-Limit-Languages": "1"})
+            try:
+                return gh.urllib.request.urlopen(req, timeout=5)
+            except gh.urllib.error.HTTPError as e:
+                raise self._http_error(e) from None
+        return real_open(self, url)
+
+    monkeypatch.setattr(gh._Client, "_open", limited_open)
+    warnings = []
+    repos = fetch_repos("tomek", api_url=f"{site}/gh", on_warning=warnings.append)
+    by_name = {r.name: r for r in repos}
+    assert len(warnings) == 1 and "limit zapytań" in warnings[0]
+    assert by_name["shop"].languages == [] and by_name["shop"].main_language == "TypeScript"
+    assert by_name["shop"].app_url == f"{site}/ok.html"
+    assert by_name["docs"].app_url is not None
+    assert repo_languages_text(by_name["lib"]) == "Python (główny)"
+    assert repo_languages_text(by_name["docs"]) == "—"

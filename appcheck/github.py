@@ -11,6 +11,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from typing import Callable
 from urllib.parse import quote
 
 DEFAULT_API_URL = "https://api.github.com"
@@ -31,11 +32,20 @@ class RepoInfo:
     pushed_at: str | None = None  # RRRR-MM-DD
     private: bool = False
     languages: list[tuple[str, float]] = field(default_factory=list)  # (język, %), malejąco
+    main_language: str | None = None  # główny język z listy repozytoriów (bez dodatkowych zapytań)
 
 
 def format_languages(languages: list[tuple[str, float]], limit: int = 6) -> str:
     shown = [f"{lang} {pct:.0f}%" for lang, pct in languages if pct >= 0.5][:limit]
     return ", ".join(shown) or "—"
+
+
+def repo_languages_text(repo: RepoInfo) -> str:
+    if repo.languages:
+        return format_languages(repo.languages)
+    if repo.main_language:
+        return f"{repo.main_language} (główny)"
+    return "—"
 
 
 class _Client:
@@ -64,7 +74,7 @@ class _Client:
             return GitHubError("GitHub odrzucił GITHUB_TOKEN (HTTP 401) — sprawdź token w .env")
         if e.code in (403, 429) and e.headers.get("X-RateLimit-Remaining") == "0":
             hint = "" if self.token else " — dodaj GITHUB_TOKEN do .env (limit 5000 zapytań/h)"
-            return GitHubError(f"Przekroczono limit zapytań GitHub API{hint}")
+            return _RateLimitError(f"Przekroczono limit zapytań GitHub API{hint}")
         return _StatusError(e.code, f"GitHub API: HTTP {e.code} dla {e.url}")
 
     def get(self, path: str):
@@ -81,6 +91,10 @@ class _Client:
                 m = re.search(r'<([^>]+)>;\s*rel="next"', resp.headers.get("Link") or "")
                 url = m.group(1) if m else None
         return items
+
+
+class _RateLimitError(GitHubError):
+    pass
 
 
 class _StatusError(GitHubError):
@@ -105,13 +119,15 @@ def _list_path(client: _Client, account: str) -> str:
     return f"/users/{quote(account)}/repos?type=owner&per_page=100"
 
 
-def _app_url(client: _Client, repo: dict) -> str | None:
+def _app_url(client: _Client, repo: dict, details: bool) -> str | None:
     homepage = (repo.get("homepage") or "").strip()
     if homepage:
         return homepage if homepage.startswith(("http://", "https://")) else f"https://{homepage}"
     if not repo.get("has_pages"):
         return None
     try:
+        if not details:
+            raise _StatusError(0, "pominięte po przekroczeniu limitu")
         pages = client.get(f"/repos/{repo['full_name']}/pages")
         if pages.get("html_url"):
             return pages["html_url"]
@@ -131,22 +147,39 @@ def _languages(client: _Client, full_name: str) -> list[tuple[str, float]]:
     return sorted(((lang, n * 100 / total) for lang, n in data.items()), key=lambda x: -x[1])
 
 
-def fetch_repos(account: str, token: str | None = None, api_url: str = DEFAULT_API_URL) -> list[RepoInfo]:
-    """Repozytoria konta (bez forków i zarchiwizowanych), od ostatnio zmienianego."""
+def fetch_repos(account: str, token: str | None = None, api_url: str = DEFAULT_API_URL,
+                on_warning: Callable[[str], None] | None = None) -> list[RepoInfo]:
+    """Repozytoria konta (bez forków i zarchiwizowanych), od ostatnio zmienianego.
+
+    Gdy limit zapytań skończy się dopiero przy szczegółach (języki, GitHub Pages), zwraca dane
+    częściowe — główny język z listy repozytoriów — i zgłasza ostrzeżenie przez ``on_warning``.
+    """
     client = _Client(api_url, token)
     raw = [r for r in client.get_all(_list_path(client, account))
            if not r.get("fork") and not r.get("archived")]
     raw.sort(key=lambda r: r.get("pushed_at") or "", reverse=True)
-    return [
-        RepoInfo(
+    details = True
+    repos = []
+    for r in raw:
+        languages: list[tuple[str, float]] = []
+        try:
+            app_url = _app_url(client, r, details)
+            if details:
+                languages = _languages(client, r["full_name"])
+        except _RateLimitError as e:
+            if details and on_warning:
+                on_warning(f"{e}; dla pozostałych repozytoriów pokazano tylko główny język")
+            details = False
+            app_url = _app_url(client, r, details)
+        repos.append(RepoInfo(
             name=r["name"],
             full_name=r["full_name"],
             html_url=r["html_url"],
             description=r.get("description"),
-            app_url=_app_url(client, r),
+            app_url=app_url,
             pushed_at=(r.get("pushed_at") or "")[:10] or None,
             private=bool(r.get("private")),
-            languages=_languages(client, r["full_name"]),
-        )
-        for r in raw
-    ]
+            languages=languages,
+            main_language=r.get("language"),
+        ))
+    return repos

@@ -68,7 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Pobieram repozytoria GitHub: {account}…", flush=True)
         try:
             repos = fetch_repos(account, os.environ.get("GITHUB_TOKEN") or None,
-                                os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL)
+                                os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL,
+                                on_warning=lambda msg: print(f"Uwaga: {msg}", file=sys.stderr))
         except GitHubError as e:
             print(f"Błąd GitHub: {e}", file=sys.stderr)
             return 2
