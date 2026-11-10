@@ -123,6 +123,28 @@ i `firma.com.pl`, a dla `example.com` także `api.example.com`. Domenę wyznacza
 publicznych (Public Suffix List), więc `sklep.com.pl` nie jest „tą samą domeną” co `firma.com.pl`,
 a `app2.herokuapp.com` co `app1.herokuapp.com`. Adresy IP i `localhost` muszą zgadzać się dokładnie.
 
+## Języki i technologie
+
+Przy każdym sprawdzeniu skrypt próbuje też ustalić, w czym napisano aplikację. Terminal pokazuje
+języki backendu (kolumna „Backend”), a raport HTML — języki frontendu i backendu w tabeli zbiorczej
+oraz, w sekcji każdej aplikacji, listę wykrytych technologii z wersją i dowodem. Źródła:
+
+- nagłówki HTTP dokumentu głównego: `Server`, `X-Powered-By`, `X-AspNet-Version`,
+  `X-AspNetMvc-Version`, `X-Generator`, `X-Drupal-Cache`, `X-Runtime`,
+- nazwy ciasteczek (bez wartości), np. `PHPSESSID` → PHP, `JSESSIONID` → Java,
+  `ASP.NET_SessionId` / `.AspNetCore.*` → C#, `csrftoken` → Python (Django),
+  `connect.sid` → JavaScript (Express), `_<aplikacja>_session` → Ruby (Rails),
+- kod strony: `<meta name="generator">`, React, Next.js, Vue, Nuxt, Angular (`ng-version`),
+  AngularJS, Svelte, jQuery, Blazor, Livewire, pola `__VIEWSTATE`, `csrfmiddlewaretoken`,
+  `authenticity_token`,
+- adresy zasobów: `/wp-content/`, `/_next/`, `/_nuxt/`, `/_framework/blazor`, pliki `.wasm`.
+
+Frontend zawsze zawiera HTML, a CSS i JavaScript, gdy strona ma style lub skrypty. Wykrywanie jest
+heurystyczne i tylko informacyjne — nie zmienia statusu aplikacji. Brak wykrycia nie oznacza braku
+technologii: serwery produkcyjne często ukrywają nagłówki, a np. TypeScript po kompilacji wygląda
+jak JavaScript (wyjątek: Angular, który jest pisany w TypeScripcie). Dla aplikacji niedostępnych
+w raporcie jest „—”.
+
 ## Kody wyjścia
 
 - `0` — brak BŁĘDÓW,

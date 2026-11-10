@@ -143,3 +143,40 @@ def test_js_redirect_to_dead_server_is_error(browser, site, tmp_path):
     assert r.status is Severity.ERROR
     assert any(i.category == "dostępność" and i.message.startswith("Serwer nie odpowiada: net::ERR_")
                and i.message.endswith("(/)") for i in r.issues)
+
+
+def test_detects_backend_from_headers_and_cookies(browser, site, tmp_path):
+    r = run(browser, f"{site}/tech/php", tmp_path)
+    assert r.status is Severity.OK
+    assert r.tech.backend_languages == ["PHP"]
+    found = {t.name: t for t in r.tech.technologies}
+    assert found["PHP"].version == "8.2.1" and found["nginx"].version == "1.25.3"
+    assert any(t.evidence == "ciasteczko PHPSESSID" for t in r.tech.technologies)
+
+
+def test_detects_frontend_frameworks(browser, site, tmp_path):
+    r = run(browser, f"{site}/tech-angular.html", tmp_path)
+    found = {t.name: t for t in r.tech.technologies}
+    assert found["Angular"].version == "17.3.0" and found["jQuery"].version == "3.7.1"
+    assert found["WordPress"].version == "6.4.2"
+    assert r.tech.frontend_languages == ["HTML", "CSS", "JavaScript", "TypeScript"]
+
+
+def test_detects_next_js(browser, site, tmp_path):
+    names = {t.name for t in run(browser, f"{site}/tech-next.html", tmp_path).tech.technologies}
+    assert {"Next.js", "React"} <= names
+
+
+def test_unreachable_app_has_no_tech(browser, dead_url, tmp_path):
+    assert run(browser, dead_url, tmp_path).tech is None
+
+
+def test_tech_detection_failure_does_not_change_status(browser, site, tmp_path, monkeypatch):
+    import appcheck.browser_check as bc
+
+    def boom(*a, **kw):
+        raise RuntimeError("zepsute wykrywanie")
+
+    monkeypatch.setattr(bc, "detect", boom)
+    r = run(browser, f"{site}/ok.html", tmp_path)
+    assert r.status is Severity.OK and r.tech is None

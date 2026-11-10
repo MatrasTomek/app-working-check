@@ -56,3 +56,29 @@ def test_html_missing_screenshot_skipped(tmp_path):
     r[1].screenshot = tmp_path / "nope.png"
     t = write_html(r, tmp_path / "r.html", datetime.now()).read_text(encoding="utf-8")
     assert "data:image/png" not in t
+
+
+def with_tech():
+    from appcheck.techdetect import BACKEND, TechProfile, Technology
+    r = sample()
+    r[0].tech = TechProfile([Technology("PHP", BACKEND, "PHP", "nagłówek X-Powered-By: PHP/8.2", "8.2")],
+                            ["HTML", "CSS", "JavaScript"], ["PHP"])
+    r[1].tech = TechProfile([], ["HTML"], [])
+    return r
+
+
+def test_terminal_shows_backend_languages():
+    out = render_terminal(with_tech(), color=False)
+    assert "Backend" in out and "PHP" in out and "nie rozpoznano" in out
+
+
+def test_terminal_without_tech_shows_dash():
+    out = render_terminal(sample(), color=False)
+    assert out.splitlines()[2].rstrip().endswith("—")
+
+
+def test_html_shows_languages_and_technologies(tmp_path):
+    t = write_html(with_tech(), tmp_path / "r.html", datetime.now()).read_text(encoding="utf-8")
+    assert "frontend: HTML, CSS, JavaScript; backend: PHP" in t
+    assert "Technologie (1)" in t and "nagłówek X-Powered-By: PHP/8.2" in t
+    assert "backend: nie rozpoznano" in t

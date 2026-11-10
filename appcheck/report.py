@@ -11,7 +11,7 @@ from appcheck.result import AppResult, Severity
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
 _ANSI = {Severity.OK: "\x1b[32m", Severity.WARNING: "\x1b[33m", Severity.ERROR: "\x1b[31m"}
 _RESET = "\x1b[0m"
-_HEADERS = ("Aplikacja", "Status", "Czas", "Problemy")
+_HEADERS = ("Aplikacja", "Status", "Czas", "Problemy", "Backend")
 
 
 def _status_text(result: AppResult) -> str:
@@ -22,6 +22,19 @@ def _time_text(result: AppResult) -> str:
     if result.load_time_ms is None:
         return "—"
     return f"{result.load_time_ms / 1000:.2f} s"
+
+
+def _backend_text(result: AppResult) -> str:
+    if result.tech is None:
+        return "—"
+    return ", ".join(result.tech.backend_languages) or "nie rozpoznano"
+
+
+def _languages_text(result: AppResult) -> str:
+    if result.tech is None:
+        return "—"
+    return (f"frontend: {', '.join(result.tech.frontend_languages)}; "
+            f"backend: {_backend_text(result)}")
 
 
 def _first_line(message: str) -> str:
@@ -37,7 +50,7 @@ def _counts(results: list[AppResult]) -> tuple[int, int, int]:
 
 def render_terminal(results: list[AppResult], color: bool = True) -> str:
     rows = [
-        (r.name, _status_text(r), _time_text(r), str(len(r.issues)) if r.issues else "—")
+        (r.name, _status_text(r), _time_text(r), str(len(r.issues)) if r.issues else "—", _backend_text(r))
         for r in results
     ]
     widths = [max(len(x) for x in col) for col in zip(_HEADERS, *rows)]
@@ -88,6 +101,19 @@ def _app_section(r: AppResult) -> str:
         f'<span class="{_CLASS[r.status]}">{_e(_status_text(r))}</span></h2>',
         f'<p class="muted">{_e(r.url)} · {_e(_time_text(r))}</p>',
     ]
+    if r.tech is not None:
+        parts.append(
+            f"<p><strong>Języki</strong> — frontend: {_e(', '.join(r.tech.frontend_languages))}; "
+            f"backend: {_e(_backend_text(r))}</p>")
+        if r.tech.technologies:
+            rows = "".join(
+                f"<tr><td>{_e(t.name)}</td><td>{_e(t.version or '')}</td><td>{_e(t.side)}</td>"
+                f"<td>{_e(t.language or '')}</td><td>{_e(t.evidence)}</td></tr>"
+                for t in r.tech.technologies)
+            parts.append(
+                f"<details><summary>Technologie ({len(r.tech.technologies)})</summary><table>"
+                "<tr><th>Nazwa</th><th>Wersja</th><th>Warstwa</th><th>Język</th><th>Dowód</th></tr>"
+                f"{rows}</table></details>")
     if r.issues:
         parts.append("<ul>" + "".join(
             f'<li class="{_CLASS[i.severity]}"><strong>[{_e(i.category)}]</strong> '
@@ -122,15 +148,16 @@ def write_html(results: list[AppResult], path: Path, started_at: datetime) -> Pa
     ok, warn, err = _counts(results)
     rows = "".join(
         f'<tr><td>{_e(r.name)}</td><td class="{_CLASS[r.status]}">{_e(_status_text(r))}</td>'
-        f"<td>{_e(_time_text(r))}</td><td>{len(r.issues) or '—'}</td></tr>" for r in results)
+        f"<td>{_e(_time_text(r))}</td><td>{len(r.issues) or '—'}</td>"
+        f"<td>{_e(_languages_text(r))}</td></tr>" for r in results)
     doc = (
         '<!DOCTYPE html>\n<html lang="pl"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         f"<title>Raport sprawdzenia aplikacji</title><style>{_CSS}</style></head><body>"
         "<h1>Raport sprawdzenia aplikacji</h1>"
-        f'<p class="muted">Uruchomiono: {_e(started_at.strftime("%Y-%m-%d %H:%M"))}</p>'
+        f'<p class="muted">Języki i technologie są wykrywane heurystycznie (nagłówki HTTP, ciasteczka, kod strony) — brak wykrycia nie oznacza braku technologii.</p><p class="muted">Uruchomiono: {_e(started_at.strftime("%Y-%m-%d %H:%M"))}</p>'
         f"<p><strong>Razem: {ok} OK, {warn} ostrzeżeń, {err} błędów</strong></p>"
-        "<table><tr><th>Aplikacja</th><th>Status</th><th>Czas</th><th>Problemy</th></tr>"
+        "<table><tr><th>Aplikacja</th><th>Status</th><th>Czas</th><th>Problemy</th><th>Języki</th></tr>"
         f"{rows}</table>"
         + "".join(_app_section(r) for r in results)
         + "</body></html>\n"

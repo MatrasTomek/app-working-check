@@ -12,6 +12,9 @@ from appcheck.config import AppConfig
 from appcheck.login import perform_login
 from appcheck.result import AppResult, Issue, RequestRecord, Severity, mask_secrets, screenshot_filename
 from appcheck.rules import classify_console, classify_page_error, classify_request
+from appcheck.techdetect import PROBE_JS, detect
+
+_MAX_RESOURCE_URLS = 2000
 
 _HAS_CONTENT_JS = """() => {
     const body = document.body;
@@ -42,6 +45,23 @@ def _take_screenshot(page: Page, app: AppConfig, screenshot_dir: Path, result: A
     result.screenshot = path
 
 
+def _detect_tech(page: Page, documents: list[Response], resource_urls: list[str], result: AppResult) -> None:
+    """Wykrywa języki i technologie; tylko informacyjnie — błąd wykrywania jest pomijany."""
+    try:
+        headers: dict[str, str] = {}
+        for doc in documents:  # pierwszy i ostatni dokument główny; późniejszy nadpisuje wcześniejszy
+            headers.update(doc.all_headers())
+        cookie_names = [c["name"] for c in page.context.cookies()]
+        try:
+            signals = page.evaluate(PROBE_JS)
+        except Exception:
+            page.wait_for_load_state("load")
+            signals = page.evaluate(PROBE_JS)
+        result.tech = detect(headers, cookie_names, signals or {}, resource_urls)
+    except Exception:
+        result.tech = None
+
+
 def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResult:
     """Sprawdza aplikację; nigdy nie rzuca wyjątku."""
     result = AppResult(name=app.name, url=app.url)
@@ -68,6 +88,7 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
         if not (masked.error and "ERR_ABORTED" in masked.error):
             result.failed_requests.append(masked)
 
+    resource_urls: list[str] = []
     context = None
     try:
         timeout_ms = app.timeout * 1000
@@ -98,6 +119,10 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
                     state["main_doc"] = (request.url, failure)
                 return
             record(RequestRecord(request.method, request.url, request.resource_type, None, failure))
+
+        def on_request(request: Request) -> None:
+            if not state["done"] and len(resource_urls) < _MAX_RESOURCE_URLS:
+                resource_urls.append(request.url)
 
         def on_response(response: Response) -> None:
             if state["done"]:
@@ -133,6 +158,7 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
         page.on("pageerror", on_pageerror)
         page.on("requestfailed", on_requestfailed)
         page.on("response", on_response)
+        page.on("request", on_request)
 
         start = time.monotonic()
         try:
@@ -182,6 +208,11 @@ def check_app(browser: Browser, app: AppConfig, screenshot_dir: Path) -> AppResu
             else:
                 add_issue(login_issue)
             judge_main_document()
+
+        documents = [resp] if resp is not None else []
+        if isinstance(state["main_doc"], Response) and state["main_doc"] is not resp:
+            documents.append(state["main_doc"])
+        _detect_tech(page, documents, resource_urls, result)
 
         state["done"] = True
         if result.status is Severity.ERROR:

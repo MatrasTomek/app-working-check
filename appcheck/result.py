@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote
 
+from appcheck.techdetect import TechProfile
+
 
 class Severity(IntEnum):
     OK = 0
@@ -55,6 +57,7 @@ class AppResult:
     failed_requests: list[RequestRecord] = field(default_factory=list)
     load_time_ms: int | None = None
     screenshot: Path | None = None
+    tech: TechProfile | None = None  # None — nie udało się zbadać (np. strona niedostępna)
 
     @property
     def status(self) -> Severity:

@@ -38,6 +38,11 @@ class _Handler(SimpleHTTPRequestHandler):
                 self._send(404, b"not found")
             elif path == "/status/502":
                 self._send(502, b"Bad Gateway")
+            elif path == "/tech/php":
+                self._send(200, b'<!doctype html><html><body><h1>PHP</h1></body></html>',
+                           "text/html; charset=utf-8",
+                           {"X-Powered-By": "PHP/8.2.1", "Server": "nginx/1.25.3",
+                            "Set-Cookie": "PHPSESSID=abc123; Path=/"})
             elif path == "/redirect":
                 self._send(302, headers={"Location": "/ok.html"})
             elif path == "/poll":
