@@ -6,7 +6,8 @@ import html
 from datetime import datetime
 from pathlib import Path
 
-from appcheck.github import RepoInfo, issues_label, repo_languages_text, status_label
+from appcheck.github import RepoInfo, issues_label, repo_languages_text
+from appcheck.statuses import StatusDef
 from appcheck.result import AppResult, Severity
 
 _ICONS = {Severity.OK: "✅", Severity.WARNING: "⚠️", Severity.ERROR: "❌"}
@@ -76,7 +77,8 @@ def render_terminal(results: list[AppResult], color: bool = True,
 
     if repos_without_url:
         out += ["", f"Repozytoria bez adresu aplikacji ({len(repos_without_url)}):"]
-        out += [f"  - {repo.name} — {repo_languages_text(repo)} · status: {status_label(repo) or '—'}"
+        out += [f"  - {repo.name} — {repo_languages_text(repo)}"
+                f" · status: {repo.status.label if repo.status else '—'}"
                 f" · issues: {issues_label(repo)}" for repo in repos_without_url]
 
     ok, warn, err = _counts(results)
@@ -100,6 +102,8 @@ a{color:inherit}
 .issues-toggle{font:inherit;cursor:pointer;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:0 8px}
 tr.issues-row td{background:var(--card)}
 ul.issues{margin:4px 0;padding-left:20px}
+.badge{display:inline-block;font-size:13px;font-weight:600;padding:1px 10px;border-radius:10px;white-space:nowrap}
+.badge-none{border:1px solid var(--line);color:var(--muted);font-weight:400}
 .topic{display:inline-block;font-size:12px;padding:0 8px;margin:1px 0;border:1px solid var(--line);border-radius:10px;white-space:nowrap}
 """
 _SCRIPT = """<script>
@@ -128,12 +132,23 @@ def _topics_html(repo: RepoInfo) -> str:
     return " ".join(f'<span class="topic">{_e(t)}</span>' for t in repo.topics)
 
 
-def _status_summary(repos: list[RepoInfo]) -> str:
-    counts: dict[str, int] = {}
+def _badge(status: StatusDef | None, suffix: str = "") -> str:
+    if status is None:
+        return f'<span class="badge badge-none">bez statusu{suffix}</span>' if suffix else "—"
+    return (f'<span class="badge" style="background:{status.color};color:{status.text_color}">'
+            f"{_e(status.label)}{suffix}</span>")
+
+
+def _status_summary(repos: list[RepoInfo], statuses: list[StatusDef]) -> str:
+    """Liczba repozytoriów w każdym statusie, w kolejności z statuses.yaml; suma = liczba repozytoriów."""
+    counts: dict[str | None, int] = {}
     for repo in repos:
-        label = status_label(repo) or "bez statusu"
-        counts[label] = counts.get(label, 0) + 1
-    return " · ".join(f"{_e(label)}: {n}" for label, n in sorted(counts.items(), key=lambda x: -x[1]))
+        key = repo.status.tag if repo.status else None
+        counts[key] = counts.get(key, 0) + 1
+    parts = [_badge(s, f" {counts[s.tag]}") for s in statuses if counts.get(s.tag)]
+    if counts.get(None):
+        parts.append(_badge(None, f" {counts[None]}"))
+    return " ".join(parts)
 
 
 def _issues_list(repo: RepoInfo) -> str:
@@ -155,7 +170,7 @@ def _app_section(r: AppResult) -> str:
             f"<p>Repozytorium: {_link(r.repo.html_url, r.repo.full_name)}"
             f"{' (prywatne)' if r.repo.private else ''}"
             f" · <strong>Języki wg GitHuba:</strong> {_e(repo_languages_text(r.repo))}"
-            f" · <strong>Status:</strong> {_e(status_label(r.repo) or '—')}"
+            f" · <strong>Status:</strong> {_badge(r.repo.status)}"
             f" · <strong>Issues:</strong> {_e(issues_label(r.repo))}</p>")
         if r.repo.issues:
             parts.append(f"<details><summary>Otwarte issues ({len(r.repo.issues)})</summary>"
@@ -207,7 +222,7 @@ def _app_section(r: AppResult) -> str:
     return "".join(parts)
 
 
-def _repos_table(repos: list[RepoInfo]) -> str:
+def _repos_table(repos: list[RepoInfo], statuses: list[StatusDef]) -> str:
     if not repos:
         return ""
     rows = []
@@ -219,7 +234,7 @@ def _repos_table(repos: list[RepoInfo]) -> str:
             issues = _e(issues_label(repo))
         rows.append(
             f"<tr><td>{_link(repo.html_url, repo.name)}</td><td>{_e(repo.description or '')}</td>"
-            f"<td>{_e(status_label(repo) or '—')}</td><td>{_topics_html(repo)}</td>"
+            f"<td>{_badge(repo.status)}</td><td>{_topics_html(repo)}</td>"
             f"<td>{_e(repo_languages_text(repo))}</td><td>{issues}</td>"
             f"<td>{_e(repo.pushed_at or '')}</td>"
             f"<td>{'prywatne' if repo.private else 'publiczne'}</td></tr>")
@@ -228,14 +243,15 @@ def _repos_table(repos: list[RepoInfo]) -> str:
                         f"<strong>Otwarte issues — {_e(repo.name)}</strong>{_issues_list(repo)}</td></tr>")
     return (f"<h2>Repozytoria bez adresu aplikacji ({len(repos)})</h2>"
             '<p class="muted">Repozytoria GitHub bez pola „Website” i bez GitHub Pages — '
-            "nie ma czego sprawdzić w przeglądarce. Status pochodzi z tagów (topics) repozytorium.</p>"
-            f"<p><strong>Statusy:</strong> {_status_summary(repos)}</p>"
+            "nie ma czego sprawdzić w przeglądarce. Status pochodzi z tagów (topics) repozytorium "
+            "według listy w statuses.yaml.</p>"
+            f"<p><strong>Statusy:</strong> {_status_summary(repos, statuses)}</p>"
             "<table><tr><th>Repozytorium</th><th>Opis</th><th>Status</th><th>Tagi</th><th>Języki wg GitHuba</th>"
             f"<th>Issues</th><th>Ostatnia zmiana</th><th>Widoczność</th></tr>{''.join(rows)}</table>")
 
 
 def write_html(results: list[AppResult], path: Path, started_at: datetime,
-               repos_without_url: list[RepoInfo] = ()) -> Path:
+               repos_without_url: list[RepoInfo] = (), statuses: list[StatusDef] = ()) -> Path:
     ok, warn, err = _counts(results)
     rows = "".join(
         f'<tr><td>{_e(r.name)}</td><td class="{_CLASS[r.status]}">{_e(_status_text(r))}</td>'
@@ -251,7 +267,7 @@ def write_html(results: list[AppResult], path: Path, started_at: datetime,
         "<table><tr><th>Aplikacja</th><th>Status</th><th>Czas</th><th>Problemy</th><th>Języki</th></tr>"
         f"{rows}</table>"
         + "".join(_app_section(r) for r in results)
-        + _repos_table(list(repos_without_url))
+        + _repos_table(list(repos_without_url), list(statuses))
         + _SCRIPT + "</body></html>\n"
     )
     path = Path(path)

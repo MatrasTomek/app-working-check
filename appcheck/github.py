@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from typing import Callable
 from urllib.parse import quote
 
+from appcheck.statuses import StatusDef
+
 DEFAULT_API_URL = "https://api.github.com"
 _TIMEOUT = 30
 
@@ -43,6 +45,7 @@ class RepoInfo:
     languages: list[tuple[str, float]] = field(default_factory=list)  # (język, %), malejąco
     main_language: str | None = None  # główny język z listy repozytoriów (bez dodatkowych zapytań)
     topics: list[str] = field(default_factory=list)  # tagi repozytorium (About → Topics)
+    status: StatusDef | None = None  # status z statuses.yaml (ustawiany przez check.py)
     details: bool = False  # czy pobrano issues (False — limit zapytań)
     issues_enabled: bool = True
     issues: list[IssueInfo] | None = None  # None — brak dostępu (uprawnienie Issues w tokenie)
@@ -51,32 +54,6 @@ class RepoInfo:
 def format_languages(languages: list[tuple[str, float]], limit: int = 6) -> str:
     shown = [f"{lang} {pct:.0f}%" for lang, pct in languages if pct >= 0.5][:limit]
     return ", ".join(shown) or "—"
-
-
-# tagi (topics) oznaczające status projektu → etykieta; dodatkowo dowolny tag „status-…”
-_STATUS_TOPICS = {
-    "🚧 w toku": ("in-progress", "wip", "work-in-progress", "in-development", "development",
-                  "w-toku", "w-trakcie", "w-realizacji"),
-    "📝 planowane": ("planned", "todo", "idea", "planowane", "pomysl", "do-zrobienia"),
-    "🧪 prototyp": ("prototype", "poc", "proof-of-concept", "prototyp", "demo"),
-    "🟢 produkcja": ("production", "live", "produkcja", "wdrozone"),
-    "🟢 aktywne": ("active", "maintained", "aktywne", "utrzymywane"),
-    "✅ gotowe": ("done", "completed", "finished", "gotowe", "zakonczone", "skonczone"),
-    "⏸ wstrzymane": ("paused", "on-hold", "wstrzymane"),
-    "⛔ porzucone": ("deprecated", "abandoned", "unmaintained", "porzucone", "nieaktywne"),
-}
-_TOPIC_TO_STATUS = {t: label for label, topics in _STATUS_TOPICS.items() for t in topics}
-
-
-def status_label(repo: RepoInfo) -> str | None:
-    """Status projektu z tagów repozytorium; None — repozytorium nie ma tagu statusu."""
-    labels = []
-    for topic in repo.topics:
-        if topic in _TOPIC_TO_STATUS:
-            labels.append(_TOPIC_TO_STATUS[topic])
-        elif topic.startswith("status-") and len(topic) > len("status-"):
-            labels.append(topic.removeprefix("status-").replace("-", " "))
-    return ", ".join(dict.fromkeys(labels)) or None
 
 
 def issues_label(repo: RepoInfo) -> str:

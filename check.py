@@ -13,6 +13,7 @@ from playwright.sync_api import sync_playwright
 from appcheck.browser_check import check_app
 from appcheck.config import AppConfig, ConfigError, load_config, load_env_file
 from appcheck.github import DEFAULT_API_URL, GitHubError, RepoInfo, fetch_repos
+from appcheck.statuses import load_statuses, resolve_status
 from appcheck.report import render_terminal, write_html
 from appcheck.result import Severity
 
@@ -29,6 +30,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                         help="katalog raportów (domyślnie reports obok check.py)")
     parser.add_argument("--env-file", type=Path, default=BASE_DIR / ".env",
                         help="plik z danymi logowania (domyślnie .env obok check.py)")
+    parser.add_argument("--statuses", type=Path, default=BASE_DIR / "statuses.yaml",
+                        help="lista statusów projektów (domyślnie statuses.yaml obok check.py)")
     parser.add_argument("--github", action="append", metavar="KONTO",
                         help="dołącz repozytoria konta GitHub (użytkownika lub organizacji); można powtarzać")
     return parser.parse_args(argv)
@@ -58,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
             apps = []  # z --github plik konfiguracji nie jest wymagany
         else:
             apps = load_config(args.config, os.environ)
+        statuses = load_statuses(args.statuses) if args.github else []
     except ConfigError as e:
         print(f"Błąd konfiguracji: {e}", file=sys.stderr)
         return 2
@@ -74,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Błąd GitHub: {e}", file=sys.stderr)
             return 2
         for repo in repos:
+            repo.status = resolve_status(repo.topics, statuses)
             if repo.app_url is None:
                 repos_without_url.append(repo)
                 continue
@@ -135,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(render_terminal(results, color=sys.stdout.isatty(), repos_without_url=repos_without_url))
     try:
-        write_html(results, report_path, started, repos_without_url)
+        write_html(results, report_path, started, repos_without_url, statuses)
     except OSError as e:
         print(f"\nNie można zapisać raportu {report_path}: {e}", file=sys.stderr)
         return 2

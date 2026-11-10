@@ -72,26 +72,13 @@ def test_rate_limit_during_details_gives_partial_data(site, monkeypatch):
     assert repo_languages_text(by_name["docs"]) == "—"
 
 
-def test_status_from_topics_and_issues(site):
-    from appcheck.github import issues_label, status_label
+def test_topics_and_issues(site):
+    from appcheck.github import issues_label
 
     by_name = {r.name: r for r in fetch_repos("tomek", token="dobry", api_url=f"{site}/gh")}
     shop, lib, docs, secret = by_name["shop"], by_name["lib"], by_name["docs"], by_name["secret"]
-    assert shop.topics == ["in-progress", "react"] and status_label(shop) == "🚧 w toku"
-    assert status_label(lib) == "do testow" and status_label(docs) is None
+    assert shop.topics == ["in-progress", "react"] and docs.topics == []
     assert issues_label(secret) == "brak dostępu"
     assert [i.number for i in shop.issues] == [1, 3]  # bez pull requestów
     assert shop.issues[0].title == "Zgłoszenie <1>" and shop.issues[0].author == "ala"
     assert issues_label(shop) == "2" and issues_label(lib) == "0" and issues_label(docs) == "wyłączone"
-
-
-def test_status_label_variants():
-    from appcheck.github import RepoInfo, status_label
-
-    def label(*topics):
-        return status_label(RepoInfo("r", "t/r", "u", topics=list(topics)))
-
-    assert label("done") == "✅ gotowe" and label("w-toku") == "🚧 w toku"
-    assert label("production", "maintained") == "🟢 produkcja, 🟢 aktywne"
-    assert label("wip", "in-progress") == "🚧 w toku"  # bez powtórzeń
-    assert label("react", "status-") is None

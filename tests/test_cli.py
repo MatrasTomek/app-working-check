@@ -182,3 +182,23 @@ def test_github_error_exits_2(tmp_path, site, capsys, monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     assert main(["--github", "nikt", "--reports-dir", str(tmp_path / "r")], tmp_path) == 2
     assert "Błąd GitHub: Nie znaleziono konta GitHub: nikt" in capsys.readouterr().err
+
+
+def test_github_status_from_statuses_file(tmp_path, site, monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", f"{site}/gh")
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    st = tmp_path / "statuses.yaml"
+    st.write_text('statuses:\n  - {tag: in-progress, label: W toku, color: "#d29922"}\n', encoding="utf-8")
+    argv = ["--config", str(tmp_path / "brak.yaml"), "--github", "tomek", "--statuses", str(st),
+            "--reports-dir", str(tmp_path / "r")]
+    assert main(argv, tmp_path) == 0
+    html = next((tmp_path / "r").glob("raport-*.html")).read_text(encoding="utf-8")
+    assert "W toku" in html  # shop ma tag in-progress
+
+
+def test_invalid_statuses_file_exits_2(tmp_path, site, capsys, monkeypatch):
+    monkeypatch.setenv("GITHUB_API_URL", f"{site}/gh")
+    st = tmp_path / "statuses.yaml"
+    st.write_text("statuses:\n  - {tag: Zly Tag, label: X, color: '#000000'}\n", encoding="utf-8")
+    assert main(["--github", "tomek", "--statuses", str(st)], tmp_path) == 2
+    assert "Błąd konfiguracji: statuses.yaml, pozycja 1" in capsys.readouterr().err

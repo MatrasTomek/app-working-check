@@ -1,0 +1,36 @@
+# Statusy projektów w raporcie (python check.py --github KONTO).
+#
+# tag   — tag (topic) repozytorium na GitHubie: małe litery, cyfry i myślniki.
+#         Dodasz go poleceniem: gh repo edit KONTO/REPO --add-topic in-progress
+# label — nazwa statusu w raporcie.
+# color — kolor plakietki w formacie "#rrggbb" (w cudzysłowie).
+#
+# Repozytorium ma najwyżej jeden status: gdy ma kilka tagów z tej listy, wygrywa ten wyżej.
+statuses:
+  - tag: in-progress
+    label: W toku
+    color: "#d29922"
+
+  - tag: in-live-test
+    label: Test na produkcji
+    color: "#8250df"
+
+  - tag: production
+    label: Produkcja
+    color: "#1a7f37"
+
+  - tag: draft
+    label: Szkic
+    color: "#57606a"
+
+  - tag: idea
+    label: Pomysł
+    color: "#bf3989"
+
+  - tag: done
+    label: Gotowe
+    color: "#0969da"
+
+  - tag: abandoned
+    label: Porzucone
+    color: "#cf222e"
