@@ -1,7 +1,14 @@
 # Lista sprawdzanych aplikacji. Nazwy muszą być unikalne.
 apps:
-  - name: Przykład
-    url: https://example.com
+  - name: Parafia-Ryglice
+    url: http://www.parafia-ryglice.pl/
+
+  - name: Parafia-Mokrzyska
+    url: http://www.parafiamokrzyska.pl/
+
+  - name: Przedszkole-Mokrzyska
+    url: http://www.przedszkolemokrzyska.pl/
+
 
   # Aplikacja z logowaniem — dane w .env jako PANEL_USER i PANEL_PASS:
   # - name: Panel klienta
