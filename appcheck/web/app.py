@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from appcheck.github import fetch_repos
 from appcheck.result import mask_secrets
 from appcheck.runner import run_checks
-from appcheck.web import servers
+from appcheck.web import projects, servers
 from appcheck.web.jobs import Job
 from appcheck.web.security import (
     SESSION_COOKIE, LoginThrottle, SessionStore, make_security_middleware, tokens_equal,
@@ -43,6 +43,8 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
     app.state.sessions = sessions
     app.state.servers_job = Job("servers", servers.make_work(settings, env, check_runner, fetch), mask)
     app.include_router(servers.make_router(settings, app.state.servers_job, mask))
+    app.state.projects_job = Job("projects", projects.make_work(settings, env, fetch), mask)
+    app.include_router(projects.make_router(app.state.projects_job, mask))
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))
 
     @app.exception_handler(RequestValidationError)
