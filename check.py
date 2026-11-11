@@ -7,13 +7,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from playwright.sync_api import Error as PlaywrightError
-from playwright.sync_api import sync_playwright
-
-from appcheck.browser_check import check_app
-from appcheck.config import AppConfig, ConfigError, load_config, load_env_file
-from appcheck.github import DEFAULT_API_URL, GitHubError, RepoInfo, fetch_repos
-from appcheck.statuses import load_statuses, resolve_status
+from appcheck.config import ConfigError, load_config, load_env_file
+from appcheck.github import DEFAULT_API_URL, GitHubError
+from appcheck.runner import RunnerError, collect_projects, run_checks
+from appcheck.statuses import load_statuses
 from appcheck.report import render_terminal, write_html
 from appcheck.result import Severity
 
@@ -35,11 +32,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--github", action="append", metavar="KONTO",
                         help="dołącz repozytoria konta GitHub (użytkownika lub organizacji); można powtarzać")
     return parser.parse_args(argv)
-
-
-def _first_line(e: Exception) -> str:
-    text = str(e).strip()
-    return text.splitlines()[0] if text else type(e).__name__
 
 
 def _setup_console() -> None:
@@ -66,27 +58,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Błąd konfiguracji: {e}", file=sys.stderr)
         return 2
 
-    repo_of: dict[str, RepoInfo] = {}
-    repos_without_url: list[RepoInfo] = []
-    for account in args.github or []:
-        print(f"Pobieram repozytoria GitHub: {account}…", flush=True)
-        try:
-            repos = fetch_repos(account, os.environ.get("GITHUB_TOKEN") or None,
-                                os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL,
-                                on_warning=lambda msg: print(f"Uwaga: {msg}", file=sys.stderr))
-        except GitHubError as e:
-            print(f"Błąd GitHub: {e}", file=sys.stderr)
-            return 2
-        for repo in repos:
-            repo.status = resolve_status(repo.topics, statuses)
-            if repo.app_url is None:
-                repos_without_url.append(repo)
-                continue
-            name = repo.name
-            if any(a.name == name for a in apps):  # kolizja z apps.yaml lub innym kontem
-                name = repo.full_name
-            apps.append(AppConfig(name=name, url=repo.app_url))
-            repo_of[name] = repo
+    try:
+        projects = collect_projects(
+            args.github or [], os.environ.get("GITHUB_TOKEN") or None, statuses, existing=apps,
+            api_url=os.environ.get("GITHUB_API_URL") or DEFAULT_API_URL,
+            on_account=lambda account: print(f"Pobieram repozytoria GitHub: {account}…", flush=True),
+            on_warning=lambda msg: print(f"Uwaga: {msg}", file=sys.stderr))
+    except GitHubError as e:
+        print(f"Błąd GitHub: {e}", file=sys.stderr)
+        return 2
+    apps = [*apps, *projects.apps]
+    repo_of = projects.repo_of
+    repos_without_url = projects.without_url
     if args.github and not apps and not repos_without_url:
         print("Brak repozytoriów do pokazania (pomijane są forki i repozytoria zarchiwizowane).",
               file=sys.stderr)
@@ -110,32 +93,13 @@ def main(argv: list[str] | None = None) -> int:
     screenshot_dir = reports_dir / stamp
     report_path = reports_dir / f"raport-{stamp}.html"
 
-    results = []
     try:
-        pw = sync_playwright().start()
-    except PlaywrightError as e:
-        print(f"Nie udało się uruchomić Playwrighta: {_first_line(e)}", file=sys.stderr)
+        results = run_checks(
+            apps, screenshot_dir, headed=args.headed, repo_of=repo_of,
+            on_progress=lambda app: print(f"Sprawdzam: {app.name} ({app.url})…", flush=True))
+    except RunnerError as e:
+        print(e, file=sys.stderr)
         return 2
-    try:
-        try:
-            browser = pw.chromium.launch(headless=not args.headed)
-        except PlaywrightError as e:
-            if "Executable doesn't exist" in str(e):
-                print("Brak przeglądarki Chromium. Uruchom: python -m playwright install chromium",
-                      file=sys.stderr)
-            else:
-                print(f"Nie udało się uruchomić przeglądarki: {_first_line(e)}", file=sys.stderr)
-            return 2
-        try:
-            for app in apps:
-                print(f"Sprawdzam: {app.name} ({app.url})…", flush=True)
-                result = check_app(browser, app, screenshot_dir)
-                result.repo = repo_of.get(app.name)
-                results.append(result)
-        finally:
-            browser.close()
-    finally:
-        pw.stop()
 
     print()
     print(render_terminal(results, color=sys.stdout.isatty(), repos_without_url=repos_without_url))
