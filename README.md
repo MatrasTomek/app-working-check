@@ -4,6 +4,8 @@ Skrypt (Python + Playwright), który po kolei odwiedza produkcyjne aplikacje web
 strony i aplikacje z logowaniem — i sprawdza: dostępność, wyświetlanie, logowanie, działanie
 backendu (żądania API) oraz błędy w konsoli przeglądarki. Wynik to tabela w terminalu i raport HTML.
 
+Do codziennego podglądu z telefonu służy **dashboard (PWA)** — sekcja [Dashboard](#dashboard-pwa-na-telefonie).
+
 ## Instalacja
 
 Windows (PowerShell / cmd):
@@ -203,6 +205,101 @@ heurystyczne i tylko informacyjne — nie zmienia statusu aplikacji. Brak wykryc
 technologii: serwery produkcyjne często ukrywają nagłówki, a np. TypeScript po kompilacji wygląda
 jak JavaScript (wyjątek: Angular, który jest pisany w TypeScripcie). Dla aplikacji niedostępnych
 w raporcie jest „—”.
+
+## Dashboard (PWA na telefonie)
+
+Oprócz jednorazowego `check.py` jest dashboard — aplikacja webowa uruchamiana na Twoim komputerze
+i obsługiwana z telefonu jako PWA. Trzy zakładki:
+
+- **Serwery** — sprawdzenie aplikacji z `apps.yaml` (i repozytoriów z `DASHBOARD_GITHUB`, które mają
+  adres) tak jak `check.py`: dostępność, logowanie, API, błędy konsoli, zrzuty ekranu błędów,
+- **Projekty** — repozytoria z kont GitHub: status z tagów (`statuses.yaml`), issues, języki, ostatnia zmiana,
+- **Agenci** — sesje Claude Code na tym komputerze (`~/.claude/projects`): pracuje / czeka na Ciebie /
+  bezczynny, projekt, gałąź, ostatnie narzędzie. Pokazywane są tylko metadane — nigdy treść rozmów.
+
+Dashboard **pracuje tylko na żądanie**:
+
+- **Odpytaj** — jednorazowe sprawdzenie serwerów, GitHuba i agentów,
+- **Start** — tryb ciągły: serwery co 5 min, projekty co 10 min, agenci co 10 s — **tylko dopóki aplikacja
+  jest otwarta i widoczna**. Po zamknięciu aplikacji lub wygaszeniu ekranu telefon przestaje wysyłać sygnał
+  obecności, a po 60 s serwer sam wyłącza tryb ciągły,
+- **Stop** — ręczne wyłączenie trybu ciągłego.
+
+Bez aktywnego trybu backend nic nie robi; przeglądarka do sprawdzeń startuje tylko na czas przebiegu.
+
+### Konfiguracja
+
+1. Zależności (raz): `pip install -r requirements.txt`.
+2. Wygeneruj token dostępu i dopisz go do `.env`:
+
+   ```
+   python serve.py --gen-token
+   ```
+
+   ```
+   DASHBOARD_TOKEN=<wygenerowany token>
+   DASHBOARD_GITHUB=MatrasTomek
+   DASHBOARD_ALLOWED_HOSTS=<komputer>.<tailnet>.ts.net
+   ```
+
+   Zmienne: `DASHBOARD_TOKEN` (wymagany, min. 32 znaki), `DASHBOARD_GITHUB` (konta GitHub, po przecinku),
+   `DASHBOARD_ALLOWED_HOSTS` (nazwa hosta z Tailscale — patrz niżej), `DASHBOARD_PORT` (domyślnie `8765`),
+   `DASHBOARD_AGENTS_DIR` (domyślnie `~/.claude/projects`). Token GitHuba — `GITHUB_TOKEN`, jak dla `check.py`.
+3. Ogranicz dostęp do `.env`: `chmod 600 .env` (dashboard ostrzega przy starcie, gdy plik jest czytelny dla innych).
+
+### Uruchomienie
+
+```
+scripts/start-dashboard.sh
+```
+
+Na komputerze otwórz <http://localhost:8765> i zaloguj się tokenem.
+
+**Autostart w Windows (WSL):** w `scripts/start-dashboard.bat` ustaw `WSL_DISTRO` (`wsl -l -v`) i `REPO_DIR`,
+potem Win+R → `shell:startup` i wklej tam **skrót** do tego pliku. Dashboard wystartuje w zminimalizowanym
+oknie po zalogowaniu do Windows. Sprawdź w przeglądarce Windows, że <http://localhost:8765> działa
+(WSL przekazuje porty `localhost` do Windows).
+
+### Dostęp z telefonu — Tailscale
+
+Dashboard słucha **wyłącznie na 127.0.0.1** — nie jest widoczny w sieci lokalnej ani w internecie.
+Telefon łączy się przez prywatną sieć [Tailscale](https://tailscale.com) (darmowy plan wystarcza):
+
+1. Zainstaluj Tailscale na Windows i na telefonie, zaloguj się na obu tym samym kontem.
+2. W panelu Tailscale (Admin console → DNS) włącz **MagicDNS** i **HTTPS Certificates**.
+3. Na Windows (PowerShell):
+
+   ```
+   tailscale serve --bg 8765
+   ```
+
+   Polecenie wypisze adres `https://<komputer>.<tailnet>.ts.net` — wpisz tę nazwę hosta do
+   `DASHBOARD_ALLOWED_HOSTS` w `.env` i uruchom dashboard ponownie.
+4. Na telefonie otwórz ten adres w Chrome, zaloguj się tokenem, menu ⋮ → **Zainstaluj aplikację**
+   (lub „Dodaj do ekranu głównego”).
+
+**Nigdy nie używaj `tailscale funnel`** — wystawiłby dashboard do publicznego internetu.
+`tailscale serve` udostępnia go tylko Twoim urządzeniom w tailnecie.
+
+### Bezpieczeństwo
+
+Dashboard ma dostęp do haseł aplikacji, tokenu GitHuba i sesji agentów, więc:
+
+- słucha tylko na `127.0.0.1` (inny adres = odmowa startu), dostęp z zewnątrz wyłącznie przez Tailscale,
+- wymaga silnego tokenu (odmowa startu bez niego); po 5 błędnych próbach logowanie jest blokowane na 15 min,
+- sesja to losowy identyfikator w ciasteczku `__Host-session` (HttpOnly, Secure, SameSite=Strict), ważny 7 dni,
+  trzymany tylko w pamięci serwera — restart dashboardu wylogowuje wszystkie urządzenia,
+- przyjmuje tylko znane nazwy hosta (ochrona przed DNS rebinding), a żądania zmieniające stan muszą mieć
+  zgodny `Origin` i nagłówek `X-Dashboard` (ochrona przed CSRF),
+- restrykcyjne CSP i nagłówki bezpieczeństwa, brak `/docs` i `/openapi.json`,
+- API nie przyjmuje adresów ani poleceń — sprawdza tylko aplikacje z konfiguracji,
+- hasła i tokeny są maskowane w odpowiedziach; z sesji agentów zwracane są tylko metadane,
+- service worker na telefonie cache'uje tylko wygląd aplikacji, nigdy danych.
+
+Szczegóły: `docs/superpowers/specs/2026-11-11-dashboard-design.md`, sekcja „Bezpieczeństwo”.
+
+Wylogowanie: przycisk **Wyloguj**. Utrata telefonu: zmień `DASHBOARD_TOKEN` i uruchom dashboard ponownie
+(unieważnia wszystkie sesje), a urządzenie usuń z tailnetu w panelu Tailscale.
 
 ## Kody wyjścia
 
