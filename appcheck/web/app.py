@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Callable, Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -24,6 +26,7 @@ from appcheck.web.security import (
 from appcheck.web.settings import Settings
 
 log = logging.getLogger("appcheck.web")
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 class LoginBody(BaseModel):
@@ -62,6 +65,7 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
             result.append(item)
         return {"agents": result, "counts": {state: sum(a["state"] == state for a in result)
                                              for state in (agents.WORKING, agents.WAITING, agents.IDLE)}}
+
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))
 
     @app.exception_handler(RequestValidationError)
@@ -98,7 +102,11 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
         return response
 
     @app.get("/api/session")
-    def session():
-        return {"authenticated": True}
+    def session(request: Request):
+        # publiczne: frontend sprawdza, czy pokazać ekran logowania (bez błędu 401 w konsoli)
+        return {"authenticated": sessions.valid(request.cookies.get(SESSION_COOKIE))}
+
+    # Frontend (statyczny, bez danych) — po API, żeby nie przesłaniał tras /api/*
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
     return app
