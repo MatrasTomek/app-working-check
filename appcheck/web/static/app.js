@@ -340,6 +340,11 @@
     });
   });
 
+  // --- PWA -------------------------------------------------------------------------------
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => { /* np. http bez localhost */ });
+  }
+
   // --- start -----------------------------------------------------------------------------
   (async () => {
     try {
