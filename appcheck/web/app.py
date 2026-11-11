@@ -16,6 +16,8 @@ from appcheck.result import mask_secrets
 from appcheck.runner import run_checks
 from appcheck.web import projects, servers
 from appcheck.web.jobs import Job
+from appcheck.web.live import LiveMode
+from appcheck.web.live import make_router as make_live_router
 from appcheck.web.security import (
     SESSION_COOKIE, LoginThrottle, SessionStore, make_security_middleware, tokens_equal,
 )
@@ -30,7 +32,8 @@ class LoginBody(BaseModel):
 
 def create_app(settings: Settings, sessions: SessionStore | None = None,
                throttle: LoginThrottle | None = None, env: Mapping[str, str] | None = None,
-               check_runner: Callable = run_checks, fetch: Callable = fetch_repos) -> FastAPI:
+               check_runner: Callable = run_checks, fetch: Callable = fetch_repos,
+               live: LiveMode | None = None) -> FastAPI:
     app = FastAPI(title="App Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
     env = os.environ if env is None else env
     sessions = sessions or SessionStore(settings.session_ttl_seconds)
@@ -46,6 +49,8 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
     app.include_router(servers.make_router(settings, app.state.servers_job, mask))
     app.state.projects_job = Job("projects", projects.make_work(settings, env, fetch), mask)
     app.include_router(projects.make_router(app.state.projects_job, mask))
+    app.state.live = live or LiveMode({"servers": app.state.servers_job, "projects": app.state.projects_job})
+    app.include_router(make_live_router(app.state.live))
 
     @app.get("/api/agents")
     def agent_sessions():
