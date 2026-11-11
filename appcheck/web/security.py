@@ -21,7 +21,7 @@ log = logging.getLogger("appcheck.web.security")
 SESSION_COOKIE = "__Host-session"
 CSRF_HEADER = "x-dashboard"
 MAX_BODY_BYTES = 64 * 1024
-PUBLIC_API = {"/api/login", "/api/health"}
+PUBLIC_API = {"/api/login", "/api/health", "/api/session"}
 SAFE_METHODS = {"GET", "HEAD"}
 
 CSP = "; ".join([

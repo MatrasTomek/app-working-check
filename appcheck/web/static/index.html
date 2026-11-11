@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <title>App Dashboard</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login" hidden>
+    <form id="login-form" class="login-card" autocomplete="on">
+      <h1>App Dashboard</h1>
+      <p class="muted">Podaj token dostępu (<code>DASHBOARD_TOKEN</code>).</p>
+      <input id="token" name="password" type="password" autocomplete="current-password"
+             required maxlength="512" aria-label="Token dostępu" placeholder="Token">
+      <button type="submit" class="primary">Zaloguj</button>
+      <p id="login-error" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="title-row">
+        <h1>App Dashboard</h1>
+        <span id="live-badge" class="live-badge" data-on="false">tryb ręczny</span>
+        <button id="logout" class="ghost small" type="button" aria-label="Wyloguj">Wyloguj</button>
+      </div>
+      <div class="actions">
+        <button id="btn-query" class="primary" type="button">Odpytaj</button>
+        <button id="btn-start" type="button">Start</button>
+        <button id="btn-stop" type="button" disabled>Stop</button>
+      </div>
+      <p id="updated" class="muted small-text" aria-live="polite"></p>
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="servers" aria-selected="true">Serwery <span class="count" id="count-servers"></span></button>
+        <button role="tab" data-tab="projects" aria-selected="false">Projekty <span class="count" id="count-projects"></span></button>
+        <button role="tab" data-tab="agents" aria-selected="false">Agenci <span class="count" id="count-agents"></span></button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="tab-servers" role="tabpanel">
+        <p class="state-line" id="servers-state"></p>
+        <div id="servers-list" class="list"></div>
+      </section>
+      <section id="tab-projects" role="tabpanel" hidden>
+        <div class="filters">
+          <input id="projects-search" type="search" placeholder="Szukaj…" aria-label="Szukaj projektu">
+          <select id="projects-status" aria-label="Status"><option value="">Wszystkie statusy</option></select>
+        </div>
+        <p class="state-line" id="projects-state"></p>
+        <div id="projects-list" class="list"></div>
+      </section>
+      <section id="tab-agents" role="tabpanel" hidden>
+        <p class="state-line" id="agents-state"></p>
+        <div id="agents-list" class="list"></div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

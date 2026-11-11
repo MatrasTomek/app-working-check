@@ -78,7 +78,8 @@ def test_env_file_permission_warning(tmp_path):
 # --- 3, 4: sesja i logowanie -------------------------------------------------------------
 
 def test_api_requires_login(client):
-    assert client.get("/api/session").status_code == 401
+    assert client.get("/api/session").json() == {"authenticated": False}
+    assert client.get("/api/servers").status_code == 401
     assert client.get("/api/nieistniejace").status_code == 401  # domyślnie zamknięte
     assert client.get("/api/health").json() == {"ok": True}
 
@@ -96,19 +97,19 @@ def test_login_sets_hardened_cookie_without_token(client):
 
 def test_wrong_token_rejected(client):
     assert login(client, "zly" + TOKEN).status_code == 401
-    assert client.get("/api/session").status_code == 401
+    assert client.get("/api/session").json() == {"authenticated": False}
 
 
 def test_forged_session_cookie_rejected(client):
     client.cookies.set(SESSION_COOKIE, "podrobione", domain="localhost")
-    assert client.get("/api/session").status_code == 401
+    assert client.get("/api/servers").status_code == 401
 
 
 def test_logout_revokes_session(authed):
     sid = authed.cookies.get(SESSION_COOKIE)
     assert authed.post("/api/logout", headers=POST_HEADERS).status_code == 204
     authed.cookies.set(SESSION_COOKIE, sid, domain="localhost")  # stare ciasteczko nic nie daje
-    assert authed.get("/api/session").status_code == 401
+    assert authed.get("/api/servers").status_code == 401
 
 
 def test_session_expires():
@@ -198,7 +199,7 @@ def test_security_headers(client):
     assert r.headers["cache-control"] == "no-store"
     assert "server" not in r.headers
     # nagłówki są także przy odmowie
-    assert "content-security-policy" in client.get("/api/session").headers
+    assert "content-security-policy" in client.get("/api/servers").headers
 
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
