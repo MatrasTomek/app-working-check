@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from appcheck import agents
 from appcheck.github import fetch_repos
 from appcheck.result import mask_secrets
 from appcheck.runner import run_checks
@@ -45,6 +46,17 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
     app.include_router(servers.make_router(settings, app.state.servers_job, mask))
     app.state.projects_job = Job("projects", projects.make_work(settings, env, fetch), mask)
     app.include_router(projects.make_router(app.state.projects_job, mask))
+
+    @app.get("/api/agents")
+    def agent_sessions():
+        sessions = agents.scan_sessions(settings.agents_dir)
+        result = []
+        for s in sessions:
+            item = agents.to_dict(s)
+            item["title"] = mask(item["title"]) if item["title"] else None
+            result.append(item)
+        return {"agents": result, "counts": {state: sum(a["state"] == state for a in result)
+                                             for state in (agents.WORKING, agents.WAITING, agents.IDLE)}}
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))
 
     @app.exception_handler(RequestValidationError)
