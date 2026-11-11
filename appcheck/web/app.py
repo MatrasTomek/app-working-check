@@ -2,12 +2,19 @@
 from __future__ import annotations
 
 import logging
+import os
+from typing import Callable, Mapping
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from appcheck.github import fetch_repos
+from appcheck.result import mask_secrets
+from appcheck.runner import run_checks
+from appcheck.web import servers
+from appcheck.web.jobs import Job
 from appcheck.web.security import (
     SESSION_COOKIE, LoginThrottle, SessionStore, make_security_middleware, tokens_equal,
 )
@@ -21,12 +28,21 @@ class LoginBody(BaseModel):
 
 
 def create_app(settings: Settings, sessions: SessionStore | None = None,
-               throttle: LoginThrottle | None = None) -> FastAPI:
+               throttle: LoginThrottle | None = None, env: Mapping[str, str] | None = None,
+               check_runner: Callable = run_checks, fetch: Callable = fetch_repos) -> FastAPI:
     app = FastAPI(title="App Dashboard", docs_url=None, redoc_url=None, openapi_url=None)
+    env = os.environ if env is None else env
     sessions = sessions or SessionStore(settings.session_ttl_seconds)
     throttle = throttle or LoginThrottle(settings.max_login_failures, settings.lockout_seconds)
+    secret_values = [*servers.collect_secrets(env), settings.token, settings.github_token]
+
+    def mask(text: str) -> str:
+        return mask_secrets(text, secret_values)
+
     app.state.settings = settings
     app.state.sessions = sessions
+    app.state.servers_job = Job("servers", servers.make_work(settings, env, check_runner, fetch), mask)
+    app.include_router(servers.make_router(settings, app.state.servers_job, mask))
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))
 
     @app.exception_handler(RequestValidationError)
