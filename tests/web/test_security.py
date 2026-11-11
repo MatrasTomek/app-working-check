@@ -196,6 +196,8 @@ def test_security_headers(client):
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["referrer-policy"] == "no-referrer"
     assert r.headers["x-frame-options"] == "DENY"
+    assert "camera=()" in r.headers["permissions-policy"]
+    assert "interest-cohort" not in r.headers["permissions-policy"]  # usunięte z Chrome — ostrzeżenie w konsoli
     assert r.headers["cache-control"] == "no-store"
     assert "server" not in r.headers
     # nagłówki są także przy odmowie
