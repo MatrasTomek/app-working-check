@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,6 +71,11 @@ class Settings:
     github_token: str | None = None
     agents_dir: Path = field(default_factory=lambda: Path.home() / ".claude" / "projects")
     claude_sessions_dir: Path = field(default_factory=lambda: Path.home() / ".claude" / "sessions")
+    copilot_dir: Path = field(default_factory=lambda: Path.home() / ".copilot")
+    vscode_storage_dirs: tuple[Path, ...] = field(default_factory=lambda: (
+        Path.home() / ".config" / "Code" / "User" / "workspaceStorage",
+        Path.home() / ".vscode-server" / "data" / "User" / "workspaceStorage",
+    ))
     session_ttl_seconds: int = 7 * 24 * 3600
     max_login_failures: int = 5
     lockout_seconds: int = 15 * 60
@@ -100,6 +106,9 @@ class Settings:
         allowed = ("localhost", "127.0.0.1", *_parse_hosts(env.get("DASHBOARD_ALLOWED_HOSTS") or ""))
         agents_dir = env.get("DASHBOARD_AGENTS_DIR")
         sessions_dir = env.get("DASHBOARD_SESSIONS_DIR")
+        copilot_dir = env.get("DASHBOARD_COPILOT_DIR")
+        vscode_dirs = tuple(Path(p.strip()).expanduser()
+                            for p in (env.get("DASHBOARD_VSCODE_STORAGE") or "").split(os.pathsep) if p.strip())
         return cls(
             token=token,
             base_dir=Path(base_dir),
@@ -110,4 +119,6 @@ class Settings:
             github_token=env.get("GITHUB_TOKEN") or None,
             **({"agents_dir": Path(agents_dir).expanduser()} if agents_dir else {}),
             **({"claude_sessions_dir": Path(sessions_dir).expanduser()} if sessions_dir else {}),
+            **({"copilot_dir": Path(copilot_dir).expanduser()} if copilot_dir else {}),
+            **({"vscode_storage_dirs": vscode_dirs} if vscode_dirs else {}),
         )

@@ -218,6 +218,11 @@ i obsługiwana z telefonu jako PWA. Trzy zakładki:
   projekt, gałąź, ostatnie narzędzie. Pokazywane są tylko metadane — nigdy treść rozmów. Zakończone sesje
   (np. po zamknięciu terminala lub `wsl --shutdown`) są ukryte — proces musi żyć według
   `~/.claude/sessions`. Przycisk **Kill** (z potwierdzeniem) wysyła SIGTERM do procesu sesji.
+  Oprócz Claude Code widoczne są też sesje GitHub Copilot:
+  - **Copilot CLI** (`~/.copilot/session-state`) — tylko działające: proces `copilot` użytkownika musi mieć
+    otwarty plik z katalogu sesji (albo plik `inuse.<pid>.lock`); Kill działa jak dla Claude Code,
+  - **Copilot Chat w VS Code** (`workspaceStorage/*/chatSessions`) — rozmowy z ostatnich 6 godzin, bez Kill
+    (czat działa wewnątrz VS Code i nie ma własnego procesu).
 
 Dashboard **pracuje tylko na żądanie**:
 
@@ -247,7 +252,11 @@ Bez aktywnego trybu backend nic nie robi; przeglądarka do sprawdzeń startuje t
    Zmienne: `DASHBOARD_TOKEN` (wymagany, min. 32 znaki), `DASHBOARD_GITHUB` (konta GitHub, po przecinku),
    `DASHBOARD_ALLOWED_HOSTS` (nazwa hosta z Tailscale — patrz niżej), `DASHBOARD_PORT` (domyślnie `8765`),
    `DASHBOARD_AGENTS_DIR` (domyślnie `~/.claude/projects`), `DASHBOARD_SESSIONS_DIR` (domyślnie
-   `~/.claude/sessions`). Token GitHuba — `GITHUB_TOKEN`, jak dla `check.py`.
+   `~/.claude/sessions`), `DASHBOARD_COPILOT_DIR` (domyślnie `~/.copilot`), `DASHBOARD_VSCODE_STORAGE`
+   (katalogi `workspaceStorage` VS Code rozdzielone `:`; domyślnie `~/.config/Code/User/workspaceStorage`
+   i `~/.vscode-server/data/User/workspaceStorage`). Przy VS Code na Windows z WSL historia czatu jest po
+   stronie Windows — ustaw np. `/mnt/c/Users/<użytkownik>/AppData/Roaming/Code/User/workspaceStorage`.
+   Token GitHuba — `GITHUB_TOKEN`, jak dla `check.py`.
 3. Ogranicz dostęp do `.env`: `chmod 600 .env` (dashboard ostrzega przy starcie, gdy plik jest czytelny dla innych).
 
 ### Uruchomienie
@@ -297,7 +306,9 @@ Dashboard ma dostęp do haseł aplikacji, tokenu GitHuba i sesji agentów, więc
 - restrykcyjne CSP i nagłówki bezpieczeństwa, brak `/docs` i `/openapi.json`,
 - API nie przyjmuje adresów ani poleceń — sprawdza tylko aplikacje z konfiguracji,
 - Kill kończy wyłącznie proces zapisany przez Claude Code w `~/.claude/sessions`, po sprawdzeniu PID-u
-  i czasu startu procesu (ochrona przed zabiciem innego procesu z tym samym PID-em); każde użycie jest logowane,
+  i czasu startu procesu (ochrona przed zabiciem innego procesu z tym samym PID-em), albo proces Copilot CLI
+  należący do tego użytkownika — tuż przed sygnałem (przez pidfd) ponownie sprawdzane są czas startu i nazwa
+  programu; każde użycie jest logowane,
 - hasła i tokeny są maskowane w odpowiedziach; z sesji agentów zwracane są tylko metadane,
 - service worker na telefonie cache'uje tylko wygląd aplikacji, nigdy danych.
 

@@ -222,6 +222,8 @@
 
   // --- render: Agenci --------------------------------------------------------------------
   const AGENT_CLASS = { "pracuje": "working", "czeka na Ciebie": "waiting", "bezczynny": "idle" };
+  const AGENT_NAME = { "claude": "Claude Code", "copilot-cli": "Copilot CLI", "copilot-chat": "Copilot Chat" };
+  const agentName = (a) => AGENT_NAME[a.agent] || "Agent";
 
   function renderAgents(data) {
     const c = data.counts;
@@ -231,15 +233,16 @@
     $("count-agents").classList.toggle("good", c["pracuje"] > 0);
     const list = $("agents-list");
     if (!data.agents.length) {
-      list.replaceChildren(h("p", { class: "empty", text: "Brak działających sesji Claude Code" }));
+      list.replaceChildren(h("p", { class: "empty", text: "Brak działających sesji agentów" }));
       return;
     }
     list.replaceChildren(...data.agents.map((a) => h("article", { class: "card" },
       h("div", { class: "card-head" },
         h("span", { class: `dot ${AGENT_CLASS[a.state] || "idle"}`, "aria-hidden": "true" }),
         h("div", { class: "name", text: a.title || a.project }),
+        h("span", { class: "chip", text: agentName(a) }),
         h("span", { class: "chip", text: a.state }),
-        killButton(a)),
+        a.can_kill ? killButton(a) : null),
       h("div", { class: "meta", text: [a.project, a.branch].filter(Boolean).join(" · ") }),
       h("div", { class: "meta", text: [ago(a.last_activity), a.last_tool ? `ostatnio: ${a.last_tool}` : null]
         .filter(Boolean).join(" · ") }),
@@ -251,7 +254,7 @@
     const btn = h("button", { class: "danger small", type: "button", text: "Kill",
       "aria-label": `Zakończ sesję: ${name}` });
     btn.addEventListener("click", () => guarded(async () => {
-      if (!confirm(`Zakończyć proces sesji Claude Code?\n\n${name}\n${a.project}`)) return;
+      if (!confirm(`Zakończyć proces sesji ${agentName(a)}?\n\n${name}\n${a.project}`)) return;
       btn.disabled = true;
       try {
         await api(`/api/agents/${encodeURIComponent(a.session_id)}/kill`, "POST");
