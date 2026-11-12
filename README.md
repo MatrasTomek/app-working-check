@@ -214,8 +214,10 @@ i obsługiwana z telefonu jako PWA. Trzy zakładki:
 - **Serwery** — sprawdzenie aplikacji z `apps.yaml` (i repozytoriów z `DASHBOARD_GITHUB`, które mają
   adres) tak jak `check.py`: dostępność, logowanie, API, błędy konsoli, zrzuty ekranu błędów,
 - **Projekty** — repozytoria z kont GitHub: status z tagów (`statuses.yaml`), issues, języki, ostatnia zmiana,
-- **Agenci** — sesje Claude Code na tym komputerze (`~/.claude/projects`): pracuje / czeka na Ciebie /
-  bezczynny, projekt, gałąź, ostatnie narzędzie. Pokazywane są tylko metadane — nigdy treść rozmów.
+- **Agenci** — działające sesje Claude Code na tym komputerze: pracuje / czeka na Ciebie / bezczynny,
+  projekt, gałąź, ostatnie narzędzie. Pokazywane są tylko metadane — nigdy treść rozmów. Zakończone sesje
+  (np. po zamknięciu terminala lub `wsl --shutdown`) są ukryte — proces musi żyć według
+  `~/.claude/sessions`. Przycisk **Kill** (z potwierdzeniem) wysyła SIGTERM do procesu sesji.
 
 Dashboard **pracuje tylko na żądanie**:
 
@@ -244,7 +246,8 @@ Bez aktywnego trybu backend nic nie robi; przeglądarka do sprawdzeń startuje t
 
    Zmienne: `DASHBOARD_TOKEN` (wymagany, min. 32 znaki), `DASHBOARD_GITHUB` (konta GitHub, po przecinku),
    `DASHBOARD_ALLOWED_HOSTS` (nazwa hosta z Tailscale — patrz niżej), `DASHBOARD_PORT` (domyślnie `8765`),
-   `DASHBOARD_AGENTS_DIR` (domyślnie `~/.claude/projects`). Token GitHuba — `GITHUB_TOKEN`, jak dla `check.py`.
+   `DASHBOARD_AGENTS_DIR` (domyślnie `~/.claude/projects`), `DASHBOARD_SESSIONS_DIR` (domyślnie
+   `~/.claude/sessions`). Token GitHuba — `GITHUB_TOKEN`, jak dla `check.py`.
 3. Ogranicz dostęp do `.env`: `chmod 600 .env` (dashboard ostrzega przy starcie, gdy plik jest czytelny dla innych).
 
 ### Uruchomienie
@@ -293,6 +296,8 @@ Dashboard ma dostęp do haseł aplikacji, tokenu GitHuba i sesji agentów, więc
   zgodny `Origin` i nagłówek `X-Dashboard` (ochrona przed CSRF),
 - restrykcyjne CSP i nagłówki bezpieczeństwa, brak `/docs` i `/openapi.json`,
 - API nie przyjmuje adresów ani poleceń — sprawdza tylko aplikacje z konfiguracji,
+- Kill kończy wyłącznie proces zapisany przez Claude Code w `~/.claude/sessions`, po sprawdzeniu PID-u
+  i czasu startu procesu (ochrona przed zabiciem innego procesu z tym samym PID-em); każde użycie jest logowane,
 - hasła i tokeny są maskowane w odpowiedziach; z sesji agentów zwracane są tylko metadane,
 - service worker na telefonie cache'uje tylko wygląd aplikacji, nigdy danych.
 

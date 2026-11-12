@@ -69,6 +69,7 @@ class Settings:
     github_accounts: tuple[str, ...] = ()
     github_token: str | None = None
     agents_dir: Path = field(default_factory=lambda: Path.home() / ".claude" / "projects")
+    claude_sessions_dir: Path = field(default_factory=lambda: Path.home() / ".claude" / "sessions")
     session_ttl_seconds: int = 7 * 24 * 3600
     max_login_failures: int = 5
     lockout_seconds: int = 15 * 60
@@ -98,6 +99,7 @@ class Settings:
             raise ConfigError(f"DASHBOARD_PORT={port_raw!r}: podaj liczbę 1024–65535")
         allowed = ("localhost", "127.0.0.1", *_parse_hosts(env.get("DASHBOARD_ALLOWED_HOSTS") or ""))
         agents_dir = env.get("DASHBOARD_AGENTS_DIR")
+        sessions_dir = env.get("DASHBOARD_SESSIONS_DIR")
         return cls(
             token=token,
             base_dir=Path(base_dir),
@@ -107,4 +109,5 @@ class Settings:
             github_accounts=_parse_accounts(env.get("DASHBOARD_GITHUB") or ""),
             github_token=env.get("GITHUB_TOKEN") or None,
             **({"agents_dir": Path(agents_dir).expanduser()} if agents_dir else {}),
+            **({"claude_sessions_dir": Path(sessions_dir).expanduser()} if sessions_dir else {}),
         )

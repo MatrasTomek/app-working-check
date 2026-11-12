@@ -56,6 +56,7 @@ button { cursor: pointer; font-weight: 600; }
 button:disabled { opacity: .45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.danger { background: transparent; border-color: var(--err); color: var(--err); }
 button.small { min-height: 36px; padding: .3rem .6rem; font-size: .85rem; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 

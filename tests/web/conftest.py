@@ -10,7 +10,8 @@ POST_HEADERS = {"Origin": "https://localhost", "X-Dashboard": "1"}
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(token=TOKEN, base_dir=tmp_path, agents_dir=tmp_path / "agents")
+    return Settings(token=TOKEN, base_dir=tmp_path, agents_dir=tmp_path / "agents",
+                    claude_sessions_dir=tmp_path / "sessions")
 
 
 def make_client(app) -> TestClient:

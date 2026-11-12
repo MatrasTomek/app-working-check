@@ -3,7 +3,7 @@ import json
 from appcheck.web.app import STATIC_DIR, create_app
 
 from .conftest import make_client
-from .test_frontend import server  # noqa: F401 — fixtura serwera uvicorn
+from .test_frontend import server, sleeper  # noqa: F401 — fixtury serwera uvicorn
 from .conftest import TOKEN
 
 

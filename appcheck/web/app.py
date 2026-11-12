@@ -57,7 +57,8 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
 
     @app.get("/api/agents")
     def agent_sessions():
-        sessions = agents.scan_sessions(settings.agents_dir)
+        sessions = agents.scan_sessions(settings.agents_dir,
+                                        live=agents.live_processes(settings.claude_sessions_dir))
         result = []
         for s in sessions:
             item = agents.to_dict(s)
@@ -65,6 +66,14 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
             result.append(item)
         return {"agents": result, "counts": {state: sum(a["state"] == state for a in result)
                                              for state in (agents.WORKING, agents.WAITING, agents.IDLE)}}
+
+    @app.post("/api/agents/{session_id}/kill")
+    def kill_agent(session_id: str):
+        pid = agents.kill_session(session_id, settings.claude_sessions_dir)
+        if pid is None:
+            return JSONResponse({"error": "Nie znaleziono działającej sesji"}, status_code=404)
+        log.warning("Zakończono sesję Claude Code %s (PID %d) z dashboardu", session_id, pid)
+        return {"ok": True}
 
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))
 

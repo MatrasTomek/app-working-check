@@ -1,6 +1,7 @@
 """Frontend w prawdziwej przeglądarce: logowanie, zakładki, Odpytaj, CSP bez naruszeń, brak XSS."""
 import json
 import socket
+import subprocess
 import threading
 import time
 from datetime import datetime, timezone
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 import pytest
 import uvicorn
 
+from appcheck.agents import proc_start_time
 from appcheck.github import RepoInfo
 from appcheck.result import AppResult, Issue, Severity
 from appcheck.web.app import create_app
@@ -24,7 +26,15 @@ def _free_port():
 
 
 @pytest.fixture
-def server(settings):
+def sleeper():
+    proc = subprocess.Popen(["sleep", "60"])
+    yield proc
+    proc.kill()
+    proc.wait()
+
+
+@pytest.fixture
+def server(settings, sleeper):
     settings.base_dir.mkdir(parents=True, exist_ok=True)
     settings.config_path.write_text("apps:\n  - {name: A, url: 'https://a.example'}\n", encoding="utf-8")
     d = settings.agents_dir / "p"
@@ -33,6 +43,9 @@ def server(settings):
         "type": "assistant", "timestamp": datetime.now(timezone.utc).isoformat(), "cwd": "/praca/projekt",
         "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {}}], "stop_reason": "tool_use"}}),
         encoding="utf-8")
+    settings.claude_sessions_dir.mkdir(parents=True)
+    (settings.claude_sessions_dir / f"{sleeper.pid}.json").write_text(json.dumps(
+        {"pid": sleeper.pid, "sessionId": "s", "procStart": proc_start_time(sleeper.pid)}), encoding="utf-8")
 
     def runner(apps, screenshot_dir, repo_of=None, **kw):
         time.sleep(0.3)
@@ -59,7 +72,7 @@ def server(settings):
     t.join(5)
 
 
-def test_dashboard_flow(server, browser):
+def test_dashboard_flow(server, browser, sleeper):
     page = browser.new_page()
     problems = []
     page.on("console", lambda m: problems.append(m.text) if m.type == "error" else None)
@@ -90,6 +103,14 @@ def test_dashboard_flow(server, browser):
     page.click("[data-tab=agents]")
     page.wait_for_selector("#agents-list .card >> text=\"/praca/projekt\"")
     assert "pracuje" in page.inner_text("#agents-list")
+    page.once("dialog", lambda d: d.dismiss())
+    page.click("#agents-list button.danger")
+    page.wait_for_timeout(300)
+    assert sleeper.poll() is None  # anulowane potwierdzenie — proces działa
+    page.once("dialog", lambda d: d.accept())
+    page.click("#agents-list button.danger")
+    page.wait_for_selector("#agents-list >> text=Brak działających sesji Claude Code")
+    assert sleeper.wait(5) == -15
 
     page.click("#btn-start")
     page.wait_for_selector("#live-badge[data-on=true]")
