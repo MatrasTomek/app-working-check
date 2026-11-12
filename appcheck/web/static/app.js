@@ -231,18 +231,36 @@
     $("count-agents").classList.toggle("good", c["pracuje"] > 0);
     const list = $("agents-list");
     if (!data.agents.length) {
-      list.replaceChildren(h("p", { class: "empty", text: "Brak sesji z ostatnich 24 h" }));
+      list.replaceChildren(h("p", { class: "empty", text: "Brak działających sesji Claude Code" }));
       return;
     }
     list.replaceChildren(...data.agents.map((a) => h("article", { class: "card" },
       h("div", { class: "card-head" },
         h("span", { class: `dot ${AGENT_CLASS[a.state] || "idle"}`, "aria-hidden": "true" }),
         h("div", { class: "name", text: a.title || a.project }),
-        h("span", { class: "chip", text: a.state })),
+        h("span", { class: "chip", text: a.state }),
+        killButton(a)),
       h("div", { class: "meta", text: [a.project, a.branch].filter(Boolean).join(" · ") }),
       h("div", { class: "meta", text: [ago(a.last_activity), a.last_tool ? `ostatnio: ${a.last_tool}` : null]
         .filter(Boolean).join(" · ") }),
       a.pr_url ? h("div", { class: "meta" }, h("a", { href: a.pr_url, text: a.pr_url })) : null)));
+  }
+
+  function killButton(a) {
+    const name = a.title || a.project;
+    const btn = h("button", { class: "danger small", type: "button", text: "Kill",
+      "aria-label": `Zakończ sesję: ${name}` });
+    btn.addEventListener("click", () => guarded(async () => {
+      if (!confirm(`Zakończyć proces sesji Claude Code?\n\n${name}\n${a.project}`)) return;
+      btn.disabled = true;
+      try {
+        await api(`/api/agents/${encodeURIComponent(a.session_id)}/kill`, "POST");
+        await new Promise((r) => setTimeout(r, 1000));  // proces potrzebuje chwili na zamknięcie
+      } finally {
+        renderAgents(await api("/api/agents"));
+      }
+    }));
+    return btn;
   }
 
   // --- odświeżanie -----------------------------------------------------------------------
