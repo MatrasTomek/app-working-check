@@ -43,12 +43,19 @@ def _find_user_field(page: Page, password: Locator) -> Locator | None:
     return None
 
 
-def _find_submit(password: Locator) -> Locator | None:
+def _find_submit(password: Locator, page: Page | None = None) -> Locator | None:
     form = password.locator("xpath=ancestor::form[1]")
     for selector in (_EXPLICIT_SUBMIT, _UNTYPED_SUBMIT):  # przycisk bez type to ostateczność (np. "pokaż hasło")
         button = form.locator(selector).first
         if button.count():
             return button
+    # Jeśli nie znaleziono przycisku w formie (np. aplikacja bez tradycyjnych form),
+    # szukaj w całej stronie (dla aplikacji SPA/Angular/Vue)
+    if page is not None:
+        for selector in (_EXPLICIT_SUBMIT, _UNTYPED_SUBMIT):
+            button = page.locator(selector).first
+            if button.count():
+                return button
     return None
 
 
@@ -80,7 +87,7 @@ def perform_login(page: Page, app: AppConfig) -> Issue | None:
         if app.submit_selector:
             submit = page.locator(app.submit_selector).first
         else:
-            submit = _find_submit(password)
+            submit = _find_submit(password, page)
         url_before = page.url
         if submit is not None:
             submit.click(timeout=timeout_ms)
