@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from appcheck import agents
+from appcheck import agents, copilot
 from appcheck.github import fetch_repos
 from appcheck.result import mask_secrets
 from appcheck.runner import run_checks
@@ -55,10 +55,15 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
     app.state.live = live or LiveMode({"servers": app.state.servers_job, "projects": app.state.projects_job})
     app.include_router(make_live_router(app.state.live))
 
+    copilot_state = settings.copilot_dir / "session-state"
+
     @app.get("/api/agents")
     def agent_sessions():
-        sessions = agents.scan_sessions(settings.agents_dir,
-                                        live=agents.live_processes(settings.claude_sessions_dir))
+        sessions = [
+            *agents.scan_sessions(settings.agents_dir, live=agents.live_processes(settings.claude_sessions_dir)),
+            *copilot.scan_cli_sessions(copilot_state, copilot.live_cli_processes(copilot_state)),
+            *copilot.scan_chat_sessions(settings.vscode_storage_dirs),
+        ]
         result = []
         for s in sessions:
             item = agents.to_dict(s)
@@ -69,10 +74,12 @@ def create_app(settings: Settings, sessions: SessionStore | None = None,
 
     @app.post("/api/agents/{session_id}/kill")
     def kill_agent(session_id: str):
-        pid = agents.kill_session(session_id, settings.claude_sessions_dir)
+        name, pid = "Claude Code", agents.kill_session(session_id, settings.claude_sessions_dir)
+        if pid is None:
+            name, pid = "Copilot CLI", copilot.kill_cli_session(session_id, copilot_state)
         if pid is None:
             return JSONResponse({"error": "Nie znaleziono działającej sesji"}, status_code=404)
-        log.warning("Zakończono sesję Claude Code %s (PID %d) z dashboardu", session_id, pid)
+        log.warning("Zakończono sesję %s %s (PID %d) z dashboardu", name, session_id, pid)
         return {"ok": True}
 
     app.middleware("http")(make_security_middleware(settings.allowed_hosts, sessions))

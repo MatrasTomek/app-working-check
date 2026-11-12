@@ -42,6 +42,8 @@ class AgentSession:
     last_activity: str  # ISO 8601
     last_tool: str | None
     pr_url: str | None
+    agent: str = "claude"  # claude | copilot-cli | copilot-chat
+    can_kill: bool = True  # sesja ma własny proces, który można zakończyć
 
 
 def _parse_ts(value: object) -> datetime | None:

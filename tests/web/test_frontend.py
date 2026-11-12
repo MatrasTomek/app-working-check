@@ -109,7 +109,7 @@ def test_dashboard_flow(server, browser, sleeper):
     assert sleeper.poll() is None  # anulowane potwierdzenie — proces działa
     page.once("dialog", lambda d: d.accept())
     page.click("#agents-list button.danger")
-    page.wait_for_selector("#agents-list >> text=Brak działających sesji Claude Code")
+    page.wait_for_selector("#agents-list >> text=Brak działających sesji agentów")
     assert sleeper.wait(5) == -15
 
     page.click("#btn-start")
