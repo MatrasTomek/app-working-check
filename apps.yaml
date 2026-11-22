@@ -1,13 +1,63 @@
 # Lista sprawdzanych aplikacji. Nazwy muszą być unikalne.
 apps:
+  #Parafia-Ryglice
   - name: Parafia-Ryglice
-    url: http://www.parafia-ryglice.pl/
+    url: https://www.parafia-ryglice.pl/
 
+  - name: Parafia-Ryglice-Admin
+    url: https://www.parafia-ryglice.pl/admin/login
+    login: RYGLICE
+
+#Parafia-Mokrzyska
   - name: Parafia-Mokrzyska
-    url: http://www.parafiamokrzyska.pl/
+    url: https://www.parafiamokrzyska.pl/
 
+  - name: Parafia-Mokrzyska-Admin
+    url: https://www.manage.parafiamokrzyska.pl/
+    login: MOKRZYSKA
+
+#Przedszkole-Mokrzyska
   - name: Przedszkole-Mokrzyska
-    url: http://www.przedszkolemokrzyska.pl/
+    url: https://www.przedszkolemokrzyska.pl/
+
+  - name: Przedszkole-Mokrzyska-Admin
+    url: https://przedszkolemokrzyska.pl/admin/logowanie
+    login: PRZEDSZKOLE
+
+#Mawex
+  - name: Mawex
+    url: https://mawex-biuro.pl/
+
+  - name: Mawex-Admin
+    url: https://mawex-biuro.pl/mawexadmin
+    login: MAWEX
+
+#Olimpijczyk-Proszowki
+  - name: Olimpijczyk-Proszowki
+    url: https://www.olimpijczyk-proszowki.pl/
+
+  - name: Olimpijczyk-Proszowki-Admin
+    url: https://www.olimpijczyk-proszowki.pl/admin/login
+    login: OLIMPIJCZYK
+
+#Twoja-Logistyka
+  - name: Twoja-Logistyka
+    url: https://www.twojalogistyka.com.pl/
+
+#ND-Soft
+  - name: ND-Soft
+    url: https://www.nd-soft.pl/
+
+  - name: ND-Soft-template
+    url: https://www.soft-template.developerweb.pl/
+
+  - name: Web-orders
+    url: https://www.zlecenia.developerweb.pl/#/
+    login: WEB_ORDERS
+
+#Omega-Dulowski
+  - name: Omega-Dulowski
+    url: https://omega-dulowski.ovh/
 
 
   # Aplikacja z logowaniem — dane w .env jako PANEL_USER i PANEL_PASS:
